@@ -1,0 +1,4 @@
+// {{project_name}} fuzz target in Rust
+fn main() {
+    println!("Fuzzing project: {{project_name}}");
+}

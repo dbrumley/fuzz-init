@@ -1,0 +1,48 @@
+# Binaries for programs and examples
+/target/
+**/*.rs.bk
+
+# Backup and IDE-specific files
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# Cargo package files
+Cargo.lock
+/.cargo/
+.cargo/
+
+# Executables and debug files
+*.exe
+*.dll
+*.so
+*.dylib
+*.pdb
+
+# Logs and build artifacts
+*.log
+
+# By-products of rustc
+*.rlib
+*.rmeta
+
+# IDEs and editors
+# VS Code
+.vscode/
+*.code-workspace
+
+# IntelliJ / CLion / RustRover
+.idea/
+
+# MacOS
+.DS_Store
+
+# Linux
+*~
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+

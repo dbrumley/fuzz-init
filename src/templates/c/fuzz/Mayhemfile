@@ -1,0 +1,6 @@
+project: {{project_name}}
+targets:
+  - name: {{target_name}}
+    binary: /fuzz/bin/{{target_name}}
+    corpus: /fuzz/testsuite/{{target_name}}
+    dictionary: /fuzz/dictionaries/{{target_name}}.dict

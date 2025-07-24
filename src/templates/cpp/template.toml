@@ -1,0 +1,49 @@
+# Template metadata for C fuzzing project
+[template]
+name = "c"
+description = "C/C++ fuzzing project with libFuzzer and AddressSanitizer"
+version = "1.0.0"
+
+# Template variables with defaults
+[variables]
+project_name = { required = true, description = "Name of the fuzzing project" }
+target_name = { default = "target1", description = "Name of the fuzz target" }
+
+# File-specific processing rules
+[[files]]
+path = "fuzz/build.sh"
+executable = true
+template = true
+
+[[files]]
+path = "fuzz/Dockerfile"
+template = true
+
+[[files]]
+path = "fuzz/Mayhemfile"
+template = true
+
+[[files]]
+path = "fuzz/README.md"
+template = true
+
+[[files]]
+path = "fuzz/src/{{target_name}}.c"
+template = true
+
+[[files]]
+path = "fuzz/dictionaries/{{target_name}}.dict"
+template = false  # Dictionary content doesn't need templating
+
+[[files]]
+path = "fuzz/driver/afl_driver.cpp"
+template = false  # Just a comment file
+
+# Directory creation rules
+[[directories]]
+path = "fuzz/testsuite/{{target_name}}"
+create_empty = true  # Create empty directory for corpus files
+
+# Post-generation hooks (optional future feature)
+[hooks]
+# post_generate = ["chmod +x fuzz/build.sh"]

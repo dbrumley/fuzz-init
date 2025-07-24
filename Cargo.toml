@@ -1,0 +1,17 @@
+[package]
+name = "mayhem-init"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+inquire = "0.6"
+handlebars = "4.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+clap = { version = "4.0", features = ["derive"] }
+toml = "0.8"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+tokio = { version = "1.0", features = ["full"] }
+zip = "0.6"
+tempfile = "3.0"
