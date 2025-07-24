@@ -1,0 +1,26 @@
+# Template metadata for Rust project
+[template]
+name = "rust"
+description = "Rust project template"
+version = "1.0.0"
+
+# Template variables with defaults
+[variables]
+project_name = { required = true, description = "Name of the project" }
+
+# Rust fuzzing example - typically uses libFuzzer through cargo-fuzz
+[fuzzers]
+supported = ["libfuzzer", "afl"]
+default = "libfuzzer"
+
+[[fuzzers.options]]
+name = "libfuzzer"
+display_name = "libFuzzer (cargo-fuzz)"
+description = "Standard Rust fuzzing with cargo-fuzz"
+requires = "cargo-fuzz and libFuzzer"
+
+[[fuzzers.options]]
+name = "afl"
+display_name = "AFL (afl.rs)"
+description = "Alternative Rust fuzzing with afl.rs"
+requires = "afl.rs crate and AFL installation"

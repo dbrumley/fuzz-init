@@ -9,6 +9,35 @@ version = "1.0.0"
 project_name = { required = true, description = "Name of the fuzzing project" }
 target_name = { default = "target1", description = "Name of the fuzz target" }
 
+# Supported fuzzers for this template
+[fuzzers]
+supported = ["afl", "libfuzzer", "hongfuzz", "standalone"]
+default = "libfuzzer"
+
+[[fuzzers.options]]
+name = "afl"
+display_name = "AFL/AFL++"
+description = "Best for applications (requires AFL/AFL++)"
+requires = "AFL or AFL++ installation"
+
+[[fuzzers.options]]
+name = "libfuzzer"
+display_name = "libFuzzer"
+description = "Best for libraries (requires Clang with libFuzzer)"
+requires = "Clang with libFuzzer support"
+
+[[fuzzers.options]]
+name = "hongfuzz"
+display_name = "HonggFuzz"
+description = "Alternative to both AFL and libFuzzer"
+requires = "HonggFuzz installation"
+
+[[fuzzers.options]]
+name = "standalone"
+display_name = "Standalone"
+description = "Works without any fuzzer installed (good for testing)"
+requires = "None (uses standard C compiler)"
+
 # File-specific processing rules
 [[files]]
 path = "fuzz/build.sh"

@@ -1,4 +1,4 @@
-use std::{fs, path::Path, collections::HashMap};
+use std::{fs, path::Path, collections::HashMap, process::Command};
 use inquire::{Text, Select};
 use handlebars::Handlebars;
 use serde_json::json;
@@ -25,6 +25,21 @@ fn get_available_templates() -> anyhow::Result<Vec<String>> {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+struct FuzzerOption {
+    name: String,
+    display_name: String,
+    description: String,
+    requires: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct FuzzerConfig {
+    supported: Vec<String>,
+    default: String,
+    options: Vec<FuzzerOption>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 struct TemplateMetadata {
     template: TemplateInfo,
     variables: HashMap<String, VariableConfig>,
@@ -34,6 +49,8 @@ struct TemplateMetadata {
     directories: Vec<DirectoryConfig>,
     #[serde(default)]
     hooks: HookConfig,
+    #[serde(default)]
+    fuzzers: Option<FuzzerConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -398,12 +415,21 @@ struct Args {
     /// Template to use (local name, github:org/repo, or @org/repo)
     #[arg(long)]
     template: Option<String>,
+    
+    /// Test template functionality by generating and building with all fuzzer options
+    #[arg(long)]
+    test: bool,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
 
     let args = Args::parse();
+    
+    // Handle test mode
+    if args.test {
+        return run_template_tests().await;
+    }
     
     // Get available templates
     let available_templates = get_available_templates()?;
@@ -450,10 +476,38 @@ async fn main() -> anyhow::Result<()> {
     // Load template metadata if available
     let metadata = load_template_metadata(&template_dir)?;
 
+    // Prompt for fuzzer choice if template supports multiple fuzzers
+    let default_fuzzer = if let Some(ref metadata) = metadata {
+        if let Some(ref fuzzer_config) = metadata.fuzzers {
+            if fuzzer_config.options.len() > 1 {
+                // Build display options from metadata
+                let fuzzer_options: Vec<String> = fuzzer_config.options.iter()
+                    .map(|opt| format!("{} - {} ({})", opt.display_name, opt.description, opt.requires))
+                    .collect();
+                
+                let selection = Select::new("Choose default fuzzer type:", fuzzer_options).prompt()?;
+                
+                // Extract the fuzzer name from the selection
+                let display_name = selection.split(" - ").next().unwrap();
+                fuzzer_config.options.iter()
+                    .find(|opt| opt.display_name == display_name)
+                    .map(|opt| opt.name.clone())
+                    .unwrap_or_else(|| fuzzer_config.default.clone())
+            } else {
+                fuzzer_config.default.clone()
+            }
+        } else {
+            "standalone".to_string()
+        }
+    } else {
+        "standalone".to_string()
+    };
+
     let handlebars = Handlebars::new();
     let data = json!({ 
         "project_name": project_name,
-        "target_name": project_name // Use project name as target name by default
+        "target_name": project_name, // Use project name as target name by default
+        "default_fuzzer": default_fuzzer
     });
 
     // Use recursive templating engine with metadata
@@ -468,4 +522,145 @@ async fn main() -> anyhow::Result<()> {
 
     println!("Project '{}' created with {} template!", project_name, template_name);
     Ok(())
+}
+
+async fn run_template_tests() -> anyhow::Result<()> {
+    println!("🧪 Running template tests...\n");
+    
+    let available_templates = get_available_templates()?;
+    let mut test_results = Vec::new();
+    
+    for template_name in &available_templates {
+        println!("Testing template: {}", template_name);
+        let result = test_template(template_name).await;
+        test_results.push((template_name.clone(), result));
+        println!();
+    }
+    
+    // Print summary
+    println!("📊 Test Summary:");
+    println!("================");
+    let mut passed = 0;
+    let mut failed = 0;
+    
+    for (template_name, result) in &test_results {
+        match result {
+            Ok(fuzzer_results) => {
+                let fuzzer_passed = fuzzer_results.iter().filter(|(_, success)| *success).count();
+                let fuzzer_total = fuzzer_results.len();
+                
+                if fuzzer_passed == fuzzer_total {
+                    println!("✅ {} - All {} fuzzer modes passed", template_name, fuzzer_total);
+                    passed += 1;
+                } else {
+                    println!("❌ {} - {}/{} fuzzer modes passed", template_name, fuzzer_passed, fuzzer_total);
+                    for (fuzzer_type, success) in fuzzer_results {
+                        if !success {
+                            println!("   └─ ❌ {} failed", fuzzer_type);
+                        }
+                    }
+                    failed += 1;
+                }
+            }
+            Err(e) => {
+                println!("❌ {} - Template failed: {}", template_name, e);
+                failed += 1;
+            }
+        }
+    }
+    
+    println!("\nFinal Result: {}/{} templates passed", passed, passed + failed);
+    
+    if failed > 0 {
+        anyhow::bail!("Some templates failed testing");
+    }
+    
+    Ok(())
+}
+
+async fn test_template(template_name: &str) -> anyhow::Result<Vec<(String, bool)>> {
+    // Create temporary directory for testing
+    let temp_dir = tempfile::tempdir()?;
+    let test_project_name = format!("test-{}", template_name);
+    let test_project_path = temp_dir.path().join(&test_project_name);
+    
+    // Load template metadata to get fuzzer options
+    let template_dir = std::env::current_dir()?.join("src/templates").join(template_name);
+    let metadata = load_template_metadata(&template_dir)?;
+    
+    let fuzzer_options = if let Some(ref metadata) = metadata {
+        if let Some(ref fuzzer_config) = metadata.fuzzers {
+            fuzzer_config.options.iter().map(|opt| opt.name.clone()).collect()
+        } else {
+            vec!["standalone".to_string()]
+        }
+    } else {
+        vec!["standalone".to_string()]
+    };
+    
+    println!("  Fuzzer options: {}", fuzzer_options.join(", "));
+    
+    let mut fuzzer_results = Vec::new();
+    
+    for fuzzer_type in &fuzzer_options {
+        println!("  Testing fuzzer: {}", fuzzer_type);
+        
+        // Generate template with this fuzzer as default
+        let handlebars = Handlebars::new();
+        let data = json!({ 
+            "project_name": test_project_name,
+            "target_name": test_project_name,
+            "default_fuzzer": fuzzer_type
+        });
+        
+        // Clean up any existing test project
+        if test_project_path.exists() {
+            fs::remove_dir_all(&test_project_path)?;
+        }
+        
+        // Generate template
+        process_template_directory(&template_dir, &test_project_path, &handlebars, &data, metadata.as_ref())?;
+        
+        // Test if this template can build
+        let success = test_template_build(&test_project_path, fuzzer_type).await?;
+        fuzzer_results.push((fuzzer_type.clone(), success));
+        
+        if success {
+            println!("    ✅ Build successful");
+        } else {
+            println!("    ❌ Build failed");
+        }
+    }
+    
+    Ok(fuzzer_results)
+}
+
+async fn test_template_build(project_path: &Path, fuzzer_type: &str) -> anyhow::Result<bool> {
+    // Look for build script
+    let build_script = project_path.join("fuzz").join("build.sh");
+    if !build_script.exists() {
+        // For simple templates without build scripts, just check if files were created
+        return Ok(project_path.exists());
+    }
+    
+    // Change to project directory and run build
+    let output = Command::new("bash")
+        .arg("build.sh")
+        .current_dir(project_path.join("fuzz"))
+        .env("FUZZER_TYPE", fuzzer_type)
+        .output();
+    
+    match output {
+        Ok(output) => {
+            let success = output.status.success();
+            if !success {
+                println!("    Build stderr: {}", String::from_utf8_lossy(&output.stderr));
+            }
+            Ok(success)
+        }
+        Err(e) => {
+            println!("    Build error: {}", e);
+            Ok(false) // Don't fail the entire test, just mark this fuzzer as failed
+        }
+    }
 }

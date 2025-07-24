@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fenv.h>
 
 /* External function that users implement */
 extern int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size);
@@ -20,8 +21,22 @@ extern int __afl_persistent_loop(unsigned int);
 extern void __afl_manual_init(void);
 #endif
 
+#ifdef __HONGGFUZZ__
+/* HonggFuzz support */
+extern int HF_ITER(uint8_t**, size_t*);
+#endif
+
+
 /* Main entry point - works with libFuzzer, AFL, HonggFuzz, or standalone */
 int main(int argc, char **argv) {
+
+
+#ifndef __APPLE__
+    // Enable all floating point exceptions
+    feclearexcept(FE_ALL_EXCEPT);
+    feenableexcept(FE_ALL_EXCEPT);
+#endif
+
     /* Call user initialization if provided */
     if (LLVMFuzzerInitialize) {
         LLVMFuzzerInitialize(&argc, &argv);
@@ -39,10 +54,19 @@ int main(int argc, char **argv) {
         }
     }
     
+#elif defined(__HONGGFUZZ__)
+    /* HonggFuzz mode - use HF_ITER for fuzzing loop */
+    uint8_t *input_buf;
+    size_t input_len;
+    
+    while (HF_ITER(&input_buf, &input_len)) {
+        LLVMFuzzerTestOneInput(input_buf, input_len);
+    }
+    
 #elif defined(__libfuzzer__)
     /* libFuzzer mode - this shouldn't be reached as libFuzzer provides its own main */
     fprintf(stderr, "Error: This binary was built for libFuzzer but is being run directly\n");
-    fprintf(stderr, "Use: ./fuzzer CORPUS_DIR\n");
+    fprintf(stderr, "Use: ./fuzzer TESTSUITE_DIR\n");
     return 1;
     
 #else

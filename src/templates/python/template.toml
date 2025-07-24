@@ -1,0 +1,12 @@
+# Template metadata for Python project
+[template]
+name = "python"
+description = "Python project template"
+version = "1.0.0"
+
+# Template variables with defaults
+[variables]
+project_name = { required = true, description = "Name of the project" }
+
+# Python typically doesn't use traditional fuzzers like AFL/libFuzzer
+# This template doesn't define fuzzer options, so no prompt will be shown
