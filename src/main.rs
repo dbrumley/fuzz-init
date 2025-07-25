@@ -1,4 +1,4 @@
-use std::{fs, path::Path, collections::HashMap, process::Command};
+use std::{fs, path::{Path, PathBuf}, collections::HashMap, process::Command};
 use inquire::{Text, Select};
 use handlebars::Handlebars;
 use serde_json::json;
@@ -6,6 +6,7 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 use reqwest;
 use tempfile::TempDir;
+use regex::Regex;
 
 fn get_available_templates() -> anyhow::Result<Vec<String>> {
     let templates_dir = "src/templates";
@@ -40,6 +41,20 @@ struct FuzzerConfig {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+struct IntegrationOption {
+    name: String,
+    description: String,
+    files: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct IntegrationConfig {
+    supported: Vec<String>,
+    default: String,
+    options: Vec<IntegrationOption>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 struct TemplateMetadata {
     template: TemplateInfo,
     variables: HashMap<String, VariableConfig>,
@@ -51,6 +66,8 @@ struct TemplateMetadata {
     hooks: HookConfig,
     #[serde(default)]
     fuzzers: Option<FuzzerConfig>,
+    #[serde(default)]
+    integrations: Option<IntegrationConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -77,6 +94,8 @@ struct FileConfig {
     executable: bool,
     #[serde(default = "default_true")]
     template: bool,
+    #[serde(default)]
+    condition: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -266,6 +285,64 @@ fn get_file_config<'a>(metadata: Option<&'a TemplateMetadata>, relative_path: &s
     metadata?.files.iter().find(|f| f.path == relative_path)
 }
 
+fn should_include_file(metadata: Option<&TemplateMetadata>, relative_path: &str, data: &serde_json::Value) -> bool {
+    if let Some(config) = get_file_config(metadata, relative_path) {
+        if let Some(condition) = &config.condition {
+            return evaluate_condition(condition, data);
+        }
+    }
+    true // Include by default if no condition
+}
+
+fn evaluate_condition(condition: &str, data: &serde_json::Value) -> bool {
+    // Handle OR conditions
+    if condition.contains("||") {
+        return condition.split("||")
+            .map(|part| part.trim())
+            .any(|part| evaluate_single_condition(part, data));
+    }
+    
+    // Handle AND conditions
+    if condition.contains("&&") {
+        return condition.split("&&")
+            .map(|part| part.trim())
+            .all(|part| evaluate_single_condition(part, data));
+    }
+    
+    // Single condition
+    evaluate_single_condition(condition, data)
+}
+
+fn evaluate_single_condition(condition: &str, data: &serde_json::Value) -> bool {
+    // Handle string equality: "integration == 'value'"
+    if let Some(captures) = regex::Regex::new(r"(\w+)\s*==\s*'([^']+)'").unwrap().captures(condition) {
+        let variable = captures.get(1).unwrap().as_str();
+        let expected_value = captures.get(2).unwrap().as_str();
+        
+        if let Some(actual_value) = data.get(variable) {
+            if let Some(actual_str) = actual_value.as_str() {
+                return actual_str == expected_value;
+            }
+        }
+        return false;
+    }
+    
+    // Handle boolean equality: "minimal == false" or "minimal == true"
+    if let Some(captures) = regex::Regex::new(r"(\w+)\s*==\s*(true|false)").unwrap().captures(condition) {
+        let variable = captures.get(1).unwrap().as_str();
+        let expected_bool = captures.get(2).unwrap().as_str() == "true";
+        
+        if let Some(actual_value) = data.get(variable) {
+            if let Some(actual_bool) = actual_value.as_bool() {
+                return actual_bool == expected_bool;
+            }
+        }
+        return false;
+    }
+    
+    false // Unknown condition format, don't include
+}
+
 fn should_template_file(metadata: Option<&TemplateMetadata>, relative_path: &str, file_path: &Path) -> bool {
     if let Some(config) = get_file_config(metadata, relative_path) {
         config.template
@@ -333,6 +410,11 @@ fn process_template_directory_impl(
             let relative_path = entry_path.strip_prefix(root_template_dir)
                 .map_err(|_| anyhow::anyhow!("Failed to calculate relative path"))?
                 .to_string_lossy();
+            
+            // Check if file should be included based on condition
+            if !should_include_file(metadata, &relative_path, data) {
+                continue; // Skip this file
+            }
             
             // Process files based on metadata configuration
             if should_template_file(metadata, &relative_path, &entry_path) {
@@ -412,18 +494,197 @@ struct Args {
     #[arg(long)]
     project: Option<String>,
     
-    /// Template to use (local name, github:org/repo, or @org/repo)
+    /// Programming language for the template (c, cpp, python, rust)
+    #[arg(long)]
+    language: Option<String>,
+    
+    /// Build system integration type (standalone, makefile, cmake)
+    #[arg(long)]
+    integration: Option<String>,
+    
+    /// Fuzzer type to use as default (afl, libfuzzer, honggfuzz, standalone)
+    #[arg(long)]
+    fuzzer: Option<String>,
+    
+    /// Template to use (github:org/repo, or @org/repo)
     #[arg(long)]
     template: Option<String>,
+    
+    /// Generate minimal template (fuzz directory only) instead of full tutorial
+    #[arg(long)]
+    minimal: bool,
     
     /// Test template functionality by generating and building with all fuzzer options
     #[arg(long)]
     test: bool,
 }
 
+fn get_project_name(args: &Args) -> anyhow::Result<String> {
+    match args.project.as_ref().or(args.project_name_pos.as_ref()) {
+        Some(name) => Ok(name.clone()),
+        None => Ok(Text::new("Project name:").prompt()?),
+    }
+}
+
+fn determine_template_source(args: &Args, available_templates: &[String]) -> anyhow::Result<TemplateSource> {
+    match (&args.language, &args.template) {
+        // Language specified - use local template
+        (Some(language), None) => {
+            if !available_templates.contains(language) {
+                anyhow::bail!("Invalid language '{}'. Available languages: {}", language, available_templates.join(", "));
+            }
+            Ok(TemplateSource::Local(language.clone()))
+        }
+        // Template specified (remote or local for backward compatibility)
+        (None, Some(template_str)) => {
+            if template_str.starts_with("github:") || template_str.starts_with('@') {
+                // Remote template
+                TemplateSource::parse(template_str)
+            } else {
+                // Local template (backward compatibility)
+                if !available_templates.contains(template_str) {
+                    anyhow::bail!("Invalid template '{}'. Available templates: {}", template_str, available_templates.join(", "));
+                }
+                Ok(TemplateSource::Local(template_str.clone()))
+            }
+        }
+        // Both specified - error (conflicting options)
+        (Some(_), Some(_)) => {
+            anyhow::bail!("Cannot specify both --language and --template. Use --language for local templates, --template for remote templates.");
+        }
+        // Neither specified - prompt for language
+        (None, None) => {
+            let selected = Select::new("Choose a language", available_templates.to_vec()).prompt()?;
+            Ok(TemplateSource::Local(selected))
+        }
+    }
+}
+
+async fn get_template_directory(template_source: &TemplateSource, available_templates: &[String]) -> anyhow::Result<(PathBuf, Option<TempDir>)> {
+    match template_source {
+        TemplateSource::Local(name) => {
+            if !available_templates.contains(name) {
+                anyhow::bail!("Invalid template name. Available templates: {}", available_templates.join(", "));
+            }
+            let path = std::env::current_dir()?.join("src/templates").join(name);
+            Ok((path, None))
+        }
+        _ => {
+            let temp_dir = fetch_github_template(template_source).await?;
+            let path = temp_dir.path().to_path_buf();
+            Ok((path, Some(temp_dir)))
+        }
+    }
+}
+
+fn select_fuzzer(args: &Args, metadata: Option<&TemplateMetadata>) -> anyhow::Result<String> {
+    if let Some(fuzzer) = &args.fuzzer {
+        // Validate fuzzer type against template metadata if available
+        if let Some(metadata) = metadata {
+            if let Some(fuzzer_config) = &metadata.fuzzers {
+                if !fuzzer_config.supported.contains(fuzzer) {
+                    anyhow::bail!("Invalid fuzzer type '{}'. Supported: {}", 
+                        fuzzer, fuzzer_config.supported.join(", "));
+                }
+            }
+        }
+        Ok(fuzzer.clone())
+    } else if let Some(metadata) = metadata {
+        if let Some(fuzzer_config) = &metadata.fuzzers {
+            if fuzzer_config.options.len() > 1 {
+                // Build display options from metadata
+                let fuzzer_options: Vec<String> = fuzzer_config.options.iter()
+                    .map(|opt| format!("{} - {} ({})", opt.display_name, opt.description, opt.requires))
+                    .collect();
+                
+                // Find the default option index
+                let default_index = fuzzer_config.options.iter()
+                    .position(|opt| opt.name == fuzzer_config.default)
+                    .unwrap_or(0);
+                
+                let selection = Select::new("Choose default fuzzer type:", fuzzer_options)
+                    .with_starting_cursor(default_index)
+                    .prompt()?;
+                
+                // Extract the fuzzer name from the selection
+                let display_name = selection.split(" - ").next().unwrap();
+                Ok(fuzzer_config.options.iter()
+                    .find(|opt| opt.display_name == display_name)
+                    .map(|opt| opt.name.clone())
+                    .unwrap_or_else(|| fuzzer_config.default.clone()))
+            } else {
+                Ok(fuzzer_config.default.clone())
+            }
+        } else {
+            Ok("standalone".to_string())
+        }
+    } else {
+        Ok("standalone".to_string())
+    }
+}
+
+fn select_integration(args: &Args, metadata: Option<&TemplateMetadata>) -> anyhow::Result<String> {
+    if let Some(integration) = &args.integration {
+        // Validate integration type against template metadata if available
+        if let Some(metadata) = metadata {
+            if let Some(integration_config) = &metadata.integrations {
+                if !integration_config.supported.contains(integration) {
+                    anyhow::bail!("Invalid integration type '{}'. Supported: {}", 
+                        integration, integration_config.supported.join(", "));
+                }
+            }
+        }
+        Ok(integration.clone())
+    } else if let Some(metadata) = metadata {
+        if let Some(integration_config) = &metadata.integrations {
+            if integration_config.options.len() > 1 {
+                // Build display options from metadata
+                let integration_options: Vec<String> = integration_config.options.iter()
+                    .map(|opt| format!("{} - {}", opt.name, opt.description))
+                    .collect();
+                
+                // Find the default option index
+                let default_index = integration_config.options.iter()
+                    .position(|opt| opt.name == integration_config.default)
+                    .unwrap_or(0);
+                
+                let selection = Select::new("Choose integration type:", integration_options)
+                    .with_starting_cursor(default_index)
+                    .prompt()?;
+                
+                // Extract the integration name from the selection
+                let integration_name = selection.split(" - ").next().unwrap();
+                Ok(integration_name.to_string())
+            } else {
+                Ok(integration_config.default.clone())
+            }
+        } else {
+            Ok("standalone".to_string())
+        }
+    } else {
+        Ok("standalone".to_string())
+    }
+}
+
+fn determine_minimal_mode(args: &Args, template_source: &TemplateSource) -> bool {
+    if matches!(template_source, TemplateSource::Local(_)) {
+        args.minimal
+    } else {
+        // Remote templates are always "full" (whatever they contain)
+        false
+    }
+}
+
+fn get_template_name(template_source: &TemplateSource) -> String {
+    match template_source {
+        TemplateSource::Local(name) => name.clone(),
+        TemplateSource::GitHub { org, repo, .. } => format!("{}/{}", org, repo),
+        TemplateSource::GitHubFull(spec) => spec.clone(),
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-
     let args = Args::parse();
     
     // Handle test mode
@@ -437,89 +698,36 @@ async fn main() -> anyhow::Result<()> {
         anyhow::bail!("No templates found in src/templates directory");
     }
     
-    // Get project name - use provided or prompt
-    let project_name = match args.project.or(args.project_name_pos) {
-        Some(name) => name,
-        None => Text::new("Project name:").prompt()?,
-    };
-
+    // Get all necessary inputs
+    let project_name = get_project_name(&args)?;
+    let template_source = determine_template_source(&args, &available_templates)?;
+    let (template_dir, _temp_dir) = get_template_directory(&template_source, &available_templates).await?;
     
-    // Handle template source - local or remote
-    let template_source = match args.template {
-        Some(template_str) => TemplateSource::parse(&template_str)?,
-        None => {
-            // Prompt user to choose from available local templates
-            let selected = Select::new("Choose a template", available_templates.clone()).prompt()?;
-            TemplateSource::Local(selected)
-        }
-    };
-
-    // Get template directory (either local or downloaded from remote)
-    let (template_dir, _temp_dir) = match &template_source {
-        TemplateSource::Local(name) => {
-            if !available_templates.contains(name) {
-                anyhow::bail!("Invalid template name. Available templates: {}", available_templates.join(", "));
-            }
-            let path = std::env::current_dir()?.join("src/templates").join(name);
-            (path, None)
-        }
-        _ => {
-            let temp_dir = fetch_github_template(&template_source).await?;
-            let path = temp_dir.path().to_path_buf();
-            (path, Some(temp_dir))
-        }
-    };
-
-    let out_path_string = format!("./{}", project_name);
-    let out_path = Path::new(&out_path_string);
-
-    // Load template metadata if available
+    // Load template metadata
     let metadata = load_template_metadata(&template_dir)?;
-
-    // Prompt for fuzzer choice if template supports multiple fuzzers
-    let default_fuzzer = if let Some(ref metadata) = metadata {
-        if let Some(ref fuzzer_config) = metadata.fuzzers {
-            if fuzzer_config.options.len() > 1 {
-                // Build display options from metadata
-                let fuzzer_options: Vec<String> = fuzzer_config.options.iter()
-                    .map(|opt| format!("{} - {} ({})", opt.display_name, opt.description, opt.requires))
-                    .collect();
-                
-                let selection = Select::new("Choose default fuzzer type:", fuzzer_options).prompt()?;
-                
-                // Extract the fuzzer name from the selection
-                let display_name = selection.split(" - ").next().unwrap();
-                fuzzer_config.options.iter()
-                    .find(|opt| opt.display_name == display_name)
-                    .map(|opt| opt.name.clone())
-                    .unwrap_or_else(|| fuzzer_config.default.clone())
-            } else {
-                fuzzer_config.default.clone()
-            }
-        } else {
-            "standalone".to_string()
-        }
-    } else {
-        "standalone".to_string()
-    };
-
+    
+    // Get user selections
+    let default_fuzzer = select_fuzzer(&args, metadata.as_ref())?;
+    let integration_type = select_integration(&args, metadata.as_ref())?;
+    let minimal_mode = determine_minimal_mode(&args, &template_source);
+    
+    // Create template data
     let handlebars = Handlebars::new();
     let data = json!({ 
         "project_name": project_name,
         "target_name": project_name, // Use project name as target name by default
-        "default_fuzzer": default_fuzzer
+        "default_fuzzer": default_fuzzer,
+        "integration": integration_type,
+        "minimal": minimal_mode
     });
-
-    // Use recursive templating engine with metadata
-    process_template_directory(&template_dir, &out_path, &handlebars, &data, metadata.as_ref())?;
-
-    // Determine template name for output message
-    let template_name = match &template_source {
-        TemplateSource::Local(name) => name.clone(),
-        TemplateSource::GitHub { org, repo, .. } => format!("{}/{}", org, repo),
-        TemplateSource::GitHubFull(spec) => spec.clone(),
-    };
-
+    
+    // Generate project
+    let out_path_string = format!("./{}", project_name);
+    let out_path = Path::new(&out_path_string);
+    process_template_directory(&template_dir, out_path, &handlebars, &data, metadata.as_ref())?;
+    
+    // Success message
+    let template_name = get_template_name(&template_source);
     println!("Project '{}' created with {} template!", project_name, template_name);
     Ok(())
 }

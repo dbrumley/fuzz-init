@@ -17,44 +17,69 @@ default = "libfuzzer"
 [[fuzzers.options]]
 name = "afl"
 display_name = "AFL/AFL++"
-description = "Best for applications (requires AFL/AFL++)"
-requires = "AFL or AFL++ installation"
+description = "Best for applications"
+requires = "requires AFL or AFL++"
 
 [[fuzzers.options]]
 name = "libfuzzer"
 display_name = "libFuzzer"
-description = "Best for libraries (requires Clang with libFuzzer)"
-requires = "Clang with libFuzzer support"
+description = "Best for libraries"
+requires = "requires clang with libFuzzer support"
 
 [[fuzzers.options]]
 name = "hongfuzz"
 display_name = "HonggFuzz"
 description = "Alternative to both AFL and libFuzzer"
-requires = "HonggFuzz installation"
+requires = "requires honggfuzz"
 
 [[fuzzers.options]]
 name = "standalone"
 display_name = "Standalone"
-description = "Works without any fuzzer installed (good for testing)"
-requires = "None (uses standard C compiler)"
+description = "Binary with no fuzzing support built-in"
+requires = "no requirements"
+
+# Supported integration types
+[integrations]
+supported = ["standalone", "makefile", "cmake"]
+default = "standalone"
+
+[[integrations.options]]
+name = "standalone"
+description = "Self-contained fuzzing setup with build script"
+files = ["fuzz/build.sh"]
+
+[[integrations.options]]
+name = "makefile"
+description = "Makefile-based build system integration"
+files = ["fuzz/Makefile", "fuzz/INTEGRATION.md"]
+
+[[integrations.options]]
+name = "cmake"
+description = "CMake-based build system integration"
+files = ["fuzz/CMakeLists.txt", "fuzz/INTEGRATION.md"]
 
 # File-specific processing rules
+# Core fuzz directory files (always included)
 [[files]]
 path = "fuzz/build.sh"
 executable = true
 template = true
+condition = "integration == 'standalone'"
 
 [[files]]
-path = "fuzz/Dockerfile"
+path = "fuzz/Makefile"
 template = true
+condition = "integration == 'makefile'"
 
 [[files]]
-path = "fuzz/Mayhemfile"
+path = "fuzz/CMakeLists.txt"
 template = true
+condition = "integration == 'cmake'"
 
 [[files]]
-path = "fuzz/README.md"
+path = "fuzz/INTEGRATION.md"
 template = true
+condition = "integration == 'makefile' || integration == 'cmake'"
 
 [[files]]
 path = "fuzz/src/{{target_name}}.c"
@@ -67,6 +92,42 @@ template = false  # Dictionary content doesn't need templating
 [[files]]
 path = "fuzz/driver/main.c"
 template = true
+
+# Tutorial and documentation files (only in full mode)
+[[files]]
+path = "fuzz/Dockerfile"
+template = true
+condition = "minimal == false"
+
+[[files]]
+path = "fuzz/Mayhemfile"
+template = true
+condition = "minimal == false"
+
+[[files]]
+path = "fuzz/README.md"
+template = true
+condition = "minimal == false"
+
+[[files]]
+path = "fuzz/testcases/example.txt"
+template = false
+condition = "minimal == false"
+
+[[files]]
+path = "fuzz/testcases/crash.txt"  
+template = false
+condition = "minimal == false"
+
+[[files]]
+path = "TUTORIAL.md"
+template = true
+condition = "minimal == false"
+
+[[files]]
+path = "examples/simple_parser.c"
+template = true
+condition = "minimal == false"
 
 # Directory creation rules
 [[directories]]
