@@ -110,24 +110,25 @@ template = true
 condition = "minimal == false"
 
 [[files]]
-path = "fuzz/testcases/example.txt"
-template = false
-condition = "minimal == false"
-
-[[files]]
-path = "fuzz/testcases/crash.txt"  
-template = false
-condition = "minimal == false"
-
-[[files]]
 path = "TUTORIAL.md"
 template = true
 condition = "minimal == false"
 
 [[files]]
-path = "examples/simple_parser.c"
+path = "src/gps.c"
 template = true
 condition = "minimal == false"
+
+[[files]]
+path = "src/main.c"
+template = true
+condition = "minimal == false"
+
+[[files]]
+path = "include/gps.h"
+template = true
+condition = "minimal == false"
+
 
 # Directory creation rules
 [[directories]]

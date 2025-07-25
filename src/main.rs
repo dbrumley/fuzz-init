@@ -6,7 +6,6 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 use reqwest;
 use tempfile::TempDir;
-use regex::Regex;
 
 fn get_available_templates() -> anyhow::Result<Vec<String>> {
     let templates_dir = "src/templates";
