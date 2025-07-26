@@ -4,6 +4,14 @@ FROM mcr.microsoft.com/vscode/devcontainers/base:debian
 # Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Install claude code. 
+RUN apt-get update && apt-get install -y \
+    nodejs \
+    npm
+
+RUN npm install -g @anthropic-ai/claude-code
+
+
 # Install essential packages
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -31,6 +39,7 @@ ENV PATH="/home/vscode/.cargo/bin:${PATH}"
 
 # Install cargo-fuzz for Rust fuzzing
 RUN /home/vscode/.cargo/bin/cargo install cargo-fuzz
+
 
 # Switch back to root for system installations
 USER root
@@ -67,6 +76,7 @@ WORKDIR /workspace
 
 # Add welcome message to bashrc
 RUN echo 'echo "🔧 Fuzzing Environment Ready! Run: cargo run -- --test"' >> ~/.bashrc
+RUN echo 'echo "🤖 Claude Code available! Run: claude --help"' >> ~/.bashrc
 
 # Default command
 CMD ["/bin/bash"]

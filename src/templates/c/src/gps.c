@@ -1,4 +1,4 @@
-#include "gps_parser.h"
+#include "gps.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

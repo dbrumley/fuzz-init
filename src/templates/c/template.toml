@@ -40,7 +40,7 @@ requires = "no requirements"
 
 # Supported integration types
 [integrations]
-supported = ["standalone", "makefile", "cmake"]
+supported = ["standalone", "make", "cmake"]
 default = "standalone"
 
 [[integrations.options]]
@@ -49,7 +49,7 @@ description = "Self-contained fuzzing setup with build script"
 files = ["fuzz/build.sh"]
 
 [[integrations.options]]
-name = "makefile"
+name = "make"
 description = "Makefile-based build system integration"
 files = ["fuzz/Makefile", "fuzz/INTEGRATION.md"]
 
@@ -58,77 +58,64 @@ name = "cmake"
 description = "CMake-based build system integration"
 files = ["fuzz/CMakeLists.txt", "fuzz/INTEGRATION.md"]
 
-# File-specific processing rules
-# Core fuzz directory files (always included)
+# File conventions - smart defaults based on directory and extension
+[file_conventions]
+# Directories always included (core fuzz files)
+always_include = ["fuzz"]
+
+# Directories only in full mode (tutorial/example content)
+full_mode_only = ["src", "include"]
+
+# File extensions that should be templated
+template_extensions = [".c", ".h", ".md", ".sh", ".toml", ".txt"]
+
+# File extensions that should be executable  
+executable_extensions = [".sh"]
+
+# File extensions that should not be templated
+no_template_extensions = [".dict", ".bin"]
+
+# Integration-specific files
 [[files]]
 path = "fuzz/build.sh"
-executable = true
-template = true
 condition = "integration == 'standalone'"
+executable = true
 
 [[files]]
 path = "fuzz/Makefile"
-template = true
-condition = "integration == 'makefile'"
+condition = "integration == 'make'"
 
 [[files]]
 path = "fuzz/CMakeLists.txt"
-template = true
 condition = "integration == 'cmake'"
 
 [[files]]
 path = "fuzz/INTEGRATION.md"
-template = true
-condition = "integration == 'makefile' || integration == 'cmake'"
+condition = "integration == 'make' || integration == 'cmake'"
+
+# Root-level build files (full mode only)
+[[files]]
+path = "Makefile"
+condition = "integration == 'make' && minimal == false"
 
 [[files]]
-path = "fuzz/src/{{target_name}}.c"
-template = true
+path = "CMakeLists.txt"
+condition = "integration == 'cmake' && minimal == false"
 
+[[files]]
+path = "build.sh"
+condition = "integration == 'standalone' && minimal == false"
+executable = true
+
+# Dictionary files should not be templated
 [[files]]
 path = "fuzz/dictionaries/{{target_name}}.dict"
-template = false  # Dictionary content doesn't need templating
+template = false
 
-[[files]]
-path = "fuzz/driver/main.c"
-template = true
-
-# Tutorial and documentation files (only in full mode)
-[[files]]
-path = "fuzz/Dockerfile"
-template = true
-condition = "minimal == false"
-
-[[files]]
-path = "fuzz/Mayhemfile"
-template = true
-condition = "minimal == false"
-
-[[files]]
-path = "fuzz/README.md"
-template = true
-condition = "minimal == false"
-
+# Root-level tutorial files (full mode only)
 [[files]]
 path = "TUTORIAL.md"
-template = true
-condition = "minimal == false"
-
-[[files]]
-path = "src/gps.c"
-template = true
-condition = "minimal == false"
-
-[[files]]
-path = "src/main.c"
-template = true
-condition = "minimal == false"
-
-[[files]]
-path = "include/gps.h"
-template = true
-condition = "minimal == false"
-
+condition = "minimal == false" 
 
 # Directory creation rules
 [[directories]]

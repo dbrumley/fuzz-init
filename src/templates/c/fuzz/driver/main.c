@@ -7,10 +7,10 @@
 #include <fenv.h>
 
 /* External function that users implement */
-extern int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size);
+extern int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size);
 
 /* Optional initialization function that users can implement */
-__attribute__((weak)) int LLVMFuzzerInitialize(int *argc, char ***argv) {
+__attribute__((weak)) int LLVMFuzzerInitialize(int* argc, char*** argv) {
     /* Default empty implementation */
     return 0;
 }
@@ -28,16 +28,17 @@ extern int HF_ITER(uint8_t**, size_t*);
 
 
 /* Main entry point - works with libFuzzer, AFL, HonggFuzz, or standalone */
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
 
 
-#ifndef __APPLE__
-    // Enable all floating point exceptions
+    /* TODO: Figure out how to enable this in devcontainer. */
+/* #if defined(__linux__) && defined(__GLIBC__)
+    extern int feenableexcept(int);
     feclearexcept(FE_ALL_EXCEPT);
     feenableexcept(FE_ALL_EXCEPT);
-#endif
+#endif */
 
-    /* Call user initialization if provided */
+/* Call user initialization if provided */
     if (LLVMFuzzerInitialize) {
         LLVMFuzzerInitialize(&argc, &argv);
     }
@@ -45,7 +46,7 @@ int main(int argc, char **argv) {
 #ifdef __AFL_COMPILER
     /* AFL mode - use persistent loop for performance */
     __afl_manual_init();
-    
+
     while (__afl_persistent_loop(1000)) {
         static uint8_t input_buf[1024 * 1024]; /* 1MB max input */
         ssize_t len = read(0, input_buf, sizeof(input_buf) - 1);
@@ -53,40 +54,40 @@ int main(int argc, char **argv) {
             LLVMFuzzerTestOneInput(input_buf, (size_t)len);
         }
     }
-    
+
 #elif defined(__HONGGFUZZ__)
     /* HonggFuzz mode - use HF_ITER for fuzzing loop */
-    uint8_t *input_buf;
+    uint8_t* input_buf;
     size_t input_len;
-    
+
     while (HF_ITER(&input_buf, &input_len)) {
         LLVMFuzzerTestOneInput(input_buf, input_len);
     }
-    
+
 #elif defined(__libfuzzer__)
     /* libFuzzer mode - this shouldn't be reached as libFuzzer provides its own main */
     fprintf(stderr, "Error: This binary was built for libFuzzer but is being run directly\n");
     fprintf(stderr, "Use: ./fuzzer TESTSUITE_DIR\n");
     return 1;
-    
+
 #else
     /* Standalone mode - read from stdin or files */
     if (argc > 1) {
         /* File mode - process each file as input */
         for (int i = 1; i < argc; i++) {
-            FILE *f = fopen(argv[i], "rb");
+            FILE* f = fopen(argv[i], "rb");
             if (!f) {
                 perror(argv[i]);
                 continue;
             }
-            
+
             /* Get file size */
             fseek(f, 0, SEEK_END);
             long size = ftell(f);
             fseek(f, 0, SEEK_SET);
-            
+
             if (size > 0 && size < 1024 * 1024) { /* 1MB limit */
-                uint8_t *data = malloc(size);
+                uint8_t* data = malloc(size);
                 if (data && fread(data, 1, size, f) == (size_t)size) {
                     printf("Testing %s (%ld bytes)\n", argv[i], size);
                     LLVMFuzzerTestOneInput(data, size);
@@ -95,7 +96,8 @@ int main(int argc, char **argv) {
             }
             fclose(f);
         }
-    } else {
+    }
+    else {
         /* Stdin mode */
         static uint8_t input_buf[1024 * 1024]; /* 1MB max input */
         ssize_t len = read(0, input_buf, sizeof(input_buf) - 1);

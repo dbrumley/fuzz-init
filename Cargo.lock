@@ -515,6 +515,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuzz-init"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "handlebars",
+ "inquire",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml",
+ "zip",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -965,24 +983,6 @@ name = "log"
 version = "0.4.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
-
-[[package]]
-name = "mayhem-init"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "handlebars",
- "inquire",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "toml",
- "zip",
-]
 
 [[package]]
 name = "memchr"

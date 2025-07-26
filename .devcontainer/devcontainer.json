@@ -1,5 +1,5 @@
 {
-  "name": "Mayhem Init Development",
+  "name": "Fuzz Init Development",
   "build": {
     "dockerfile": "Dockerfile",
     "context": ".."
@@ -11,12 +11,16 @@
         "rust-lang.rust-analyzer",
         "vadimcn.vscode-lldb",
         "ms-vscode.cpptools",
-        "ms-python.python"
+        "ms-python.python",
+        "anthropic.claude-code"
       ]
     }
   },
   "forwardPorts": [],
-  "postCreateCommand": "cargo --version && rustc --version && clang --version && (afl-clang --version 2>/dev/null || echo 'AFL++ ready') && (honggfuzz --version 2>/dev/null || echo 'HonggFuzz ready')",
+  "mounts": [
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.config/claude,type=bind,consistency=cached"
+  ],
+  "postCreateCommand": "cargo --version && rustc --version && clang --version && (afl-clang --version 2>/dev/null || echo 'AFL++ ready') && (honggfuzz --version 2>/dev/null || echo 'HonggFuzz ready') && (claude --version 2>/dev/null || echo 'Claude Code ready')",
   "remoteUser": "vscode",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
   "workspaceFolder": "/workspace"

@@ -67,6 +67,8 @@ struct TemplateMetadata {
     fuzzers: Option<FuzzerConfig>,
     #[serde(default)]
     integrations: Option<IntegrationConfig>,
+    #[serde(default)]
+    file_conventions: FileConventions,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -108,6 +110,20 @@ struct DirectoryConfig {
 struct HookConfig {
     #[serde(default)]
     post_generate: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Default)]
+struct FileConventions {
+    #[serde(default)]
+    always_include: Vec<String>,
+    #[serde(default)]
+    full_mode_only: Vec<String>,
+    #[serde(default)]
+    template_extensions: Vec<String>,
+    #[serde(default)]
+    executable_extensions: Vec<String>,
+    #[serde(default)]
+    no_template_extensions: Vec<String>,
 }
 
 fn default_true() -> bool {
@@ -188,7 +204,7 @@ async fn fetch_github_template(source: &TemplateSource) -> anyhow::Result<TempDi
     let client = reqwest::Client::new();
     let response = client
         .get(&download_url)
-        .header("User-Agent", "mayhem-init")
+        .header("User-Agent", "fuzz-init")
         .send()
         .await?;
     
@@ -285,27 +301,80 @@ fn get_file_config<'a>(metadata: Option<&'a TemplateMetadata>, relative_path: &s
 }
 
 fn should_include_file(metadata: Option<&TemplateMetadata>, relative_path: &str, data: &serde_json::Value) -> bool {
+    // First check explicit file configuration
     if let Some(config) = get_file_config(metadata, relative_path) {
         if let Some(condition) = &config.condition {
             return evaluate_condition(condition, data);
         }
     }
-    true // Include by default if no condition
+    
+    // Apply convention-based rules
+    if let Some(metadata) = metadata {
+        return should_include_by_convention(&metadata.file_conventions, relative_path, data);
+    }
+    
+    true // Include by default if no metadata
+}
+
+fn should_include_by_convention(conventions: &FileConventions, relative_path: &str, data: &serde_json::Value) -> bool {
+    // Check if file is in always-included directories
+    for always_dir in &conventions.always_include {
+        if relative_path.starts_with(always_dir) {
+            // Files in always-included directories are included by default
+            // but still subject to minimal mode rules for tutorial files
+            if is_tutorial_file(relative_path) {
+                if let Some(minimal) = data.get("minimal") {
+                    if let Some(minimal_bool) = minimal.as_bool() {
+                        return !minimal_bool; // Exclude tutorial files in minimal mode
+                    }
+                }
+            }
+            return true;
+        }
+    }
+    
+    // Check directory-based rules for full-mode-only directories
+    for full_mode_dir in &conventions.full_mode_only {
+        if relative_path.starts_with(full_mode_dir) {
+            // Only include if not in minimal mode
+            if let Some(minimal) = data.get("minimal") {
+                if let Some(minimal_bool) = minimal.as_bool() {
+                    return !minimal_bool;
+                }
+            }
+            return true; // Default to include if minimal not specified
+        }
+    }
+    
+    true // Include by default
+}
+
+fn is_tutorial_file(relative_path: &str) -> bool {
+    let filename = Path::new(relative_path).file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    
+    // Tutorial/documentation files that should be excluded in minimal mode
+    matches!(filename, "Dockerfile" | "Mayhemfile" | "README.md")
 }
 
 fn evaluate_condition(condition: &str, data: &serde_json::Value) -> bool {
+    // Handle AND conditions first (higher precedence)
+    if condition.contains("&&") {
+        return condition.split("&&")
+            .map(|part| part.trim())
+            .all(|part| evaluate_condition_with_or(part, data));
+    }
+    
     // Handle OR conditions
+    evaluate_condition_with_or(condition, data)
+}
+
+fn evaluate_condition_with_or(condition: &str, data: &serde_json::Value) -> bool {
     if condition.contains("||") {
         return condition.split("||")
             .map(|part| part.trim())
             .any(|part| evaluate_single_condition(part, data));
-    }
-    
-    // Handle AND conditions
-    if condition.contains("&&") {
-        return condition.split("&&")
-            .map(|part| part.trim())
-            .all(|part| evaluate_single_condition(part, data));
     }
     
     // Single condition
@@ -343,21 +412,62 @@ fn evaluate_single_condition(condition: &str, data: &serde_json::Value) -> bool 
 }
 
 fn should_template_file(metadata: Option<&TemplateMetadata>, relative_path: &str, file_path: &Path) -> bool {
+    // First check explicit file configuration
     if let Some(config) = get_file_config(metadata, relative_path) {
-        config.template
-    } else {
-        // Default behavior: template text files
-        is_text_file(file_path)
+        return config.template;
     }
+    
+    // Apply convention-based rules
+    if let Some(metadata) = metadata {
+        return should_template_by_convention(&metadata.file_conventions, file_path);
+    }
+    
+    // Default behavior: template text files
+    is_text_file(file_path)
+}
+
+fn should_template_by_convention(conventions: &FileConventions, file_path: &Path) -> bool {
+    if let Some(extension) = file_path.extension() {
+        let ext = format!(".{}", extension.to_string_lossy());
+        
+        // Check if explicitly marked as no-template
+        if conventions.no_template_extensions.contains(&ext) {
+            return false;
+        }
+        
+        // Check if explicitly marked as template
+        if !conventions.template_extensions.is_empty() && conventions.template_extensions.contains(&ext) {
+            return true;
+        }
+    }
+    
+    // Fall back to default text file detection
+    is_text_file(file_path)
 }
 
 fn should_be_executable(metadata: Option<&TemplateMetadata>, relative_path: &str, file_path: &Path) -> anyhow::Result<bool> {
+    // First check explicit file configuration
     if let Some(config) = get_file_config(metadata, relative_path) {
-        Ok(config.executable)
-    } else {
-        // Default behavior: check existing permissions
-        is_executable(file_path)
+        return Ok(config.executable);
     }
+    
+    // Apply convention-based rules
+    if let Some(metadata) = metadata {
+        if should_be_executable_by_convention(&metadata.file_conventions, file_path) {
+            return Ok(true);
+        }
+    }
+    
+    // Default behavior: check existing permissions
+    is_executable(file_path)
+}
+
+fn should_be_executable_by_convention(conventions: &FileConventions, file_path: &Path) -> bool {
+    if let Some(extension) = file_path.extension() {
+        let ext = format!(".{}", extension.to_string_lossy());
+        return conventions.executable_extensions.contains(&ext);
+    }
+    false
 }
 
 fn process_template_directory(
@@ -479,7 +589,7 @@ fn is_executable(path: &Path) -> anyhow::Result<bool> {
 }
 
 #[derive(Parser)]
-#[command(name = "mayhem-init")]
+#[command(name = "fuzz-init")]
 #[command(about = "Scaffold fuzz harnesses with Mayhem for various languages")]
 #[command(version)]
 
@@ -711,7 +821,18 @@ async fn main() -> anyhow::Result<()> {
     let minimal_mode = determine_minimal_mode(&args, &template_source);
     
     // Create template data
-    let handlebars = Handlebars::new();
+    let mut handlebars = Handlebars::new();
+    
+    // Register the 'eq' helper for conditional templating
+    handlebars.register_helper("eq", Box::new(|h: &handlebars::Helper, _: &handlebars::Handlebars, _: &handlebars::Context, _: &mut handlebars::RenderContext, out: &mut dyn handlebars::Output| -> handlebars::HelperResult {
+        let param0 = h.param(0).and_then(|v| v.value().as_str()).unwrap_or("");
+        let param1 = h.param(1).and_then(|v| v.value().as_str()).unwrap_or("");
+        if param0 == param1 {
+            out.write("true")?;
+        }
+        Ok(())
+    }));
+    
     let data = json!({ 
         "project_name": project_name,
         "target_name": project_name, // Use project name as target name by default
@@ -813,11 +934,24 @@ async fn test_template(template_name: &str) -> anyhow::Result<Vec<(String, bool)
         println!("  Testing fuzzer: {}", fuzzer_type);
         
         // Generate template with this fuzzer as default
-        let handlebars = Handlebars::new();
+        let mut handlebars = Handlebars::new();
+        
+        // Register the 'eq' helper for conditional templating
+        handlebars.register_helper("eq", Box::new(|h: &handlebars::Helper, _: &handlebars::Handlebars, _: &handlebars::Context, _: &mut handlebars::RenderContext, out: &mut dyn handlebars::Output| -> handlebars::HelperResult {
+            let param0 = h.param(0).and_then(|v| v.value().as_str()).unwrap_or("");
+            let param1 = h.param(1).and_then(|v| v.value().as_str()).unwrap_or("");
+            if param0 == param1 {
+                out.write("true")?;
+            }
+            Ok(())
+        }));
+        
         let data = json!({ 
             "project_name": test_project_name,
             "target_name": test_project_name,
-            "default_fuzzer": fuzzer_type
+            "default_fuzzer": fuzzer_type,
+            "integration": "standalone", // Default for testing
+            "minimal": false
         });
         
         // Clean up any existing test project

@@ -1,7 +1,7 @@
-# mayhem-init
+# fuzz-init
 
 The easiest way to get started integrating fuzzing into your app is by using
-`mayhem-init`. This CLI tool enables you to quickly start building the proper
+`fuzz-init`. This CLI tool enables you to quickly start building the proper
 scaffolding and new fuzz harness, with everything set up for you to run in
 Mayhem. You can also create a new skeleton template for a new app that includes
 fuzzing and follows best practices.
@@ -11,18 +11,20 @@ fuzzing and follows best practices.
 To get started, simply run:
 
 ```bash
-mayhem-init
+fuzz-init
 ```
 
 This will prompt you to:
 1. Enter a project name
-2. Choose a template (C, C++, Python, Rust)
+2. Choose a language template (C, C++, Python, Rust)
 3. Select your preferred fuzzer (AFL, libFuzzer, HonggFuzz, or standalone)
+4. Select your preferred build system (make, cmake, cargo, etc)
+
 
 To create scaffolding in a specific folder with all options specified:
 
 ```bash
-mayhem-init my-app --template c
+fuzz-init my-app --language c  --integration make --fuzzer libfuzzer
 ```
 
 ## Testing Your Setup
@@ -31,7 +33,7 @@ mayhem-init my-app --template c
 correctly on your system:
 
 ```bash
-mayhem-init --test
+fuzz-init --test
 ```
 
 This will:
@@ -71,7 +73,7 @@ installations and configurations. The test mode helps you:
 
 ## Options
 
-`mayhem-init` comes with the following options:
+`fuzz-init` comes with the following options:
 
 - `--template <name>` - Select a specific template (c, c++, python, rust, or
   github:org/repo)
@@ -106,8 +108,8 @@ Rust fuzzing template with cargo integration:
 ### Remote Templates
 You can also use templates from GitHub repositories:
 ```bash
-mayhem-init my-project --template github:forallsecure/c-template
-mayhem-init my-project --template @forallsecure/c-template  # short
+fuzz-init my-project --template github:forallsecure/c-template
+fuzz-init my-project --template @forallsecure/c-template  # short
 ```
 
 ## Prerequisites
@@ -124,19 +126,19 @@ mayhem-init my-project --template @forallsecure/c-template  # short
 ### Installation Check
 The easiest way to see what's working on your system:
 ```bash
-mayhem-init --test
+fuzz-init --test
 ```
 
 ## Getting Started Example
 
 1. **Test your setup first**:
    ```bash
-   mayhem-init --test
+   fuzz-init --test
    ```
 
 2. **Create a new C fuzzing project**:
    ```bash
-   mayhem-init my-fuzz-project --template c
+   fuzz-init my-fuzz-project --template c
    ```
 
 3. **Build and test your project**:
@@ -171,7 +173,7 @@ Benefits:
 - ✅ No macOS compatibility issues
 - ✅ All fuzzing tools pre-installed and configured  
 - ✅ Consistent environment across development machines
-- ✅ Perfect for running `mayhem-init --test`
+- ✅ Perfect for running `fuzz-init --test`
 
 ### Manual Setup
 
