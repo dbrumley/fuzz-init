@@ -1,10 +1,13 @@
+#if defined(__linux__) && defined(__GLIBC__)
+#define _GNU_SOURCE
+#endif
+
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <fenv.h>
 
 /* External function that users implement */
 extern int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size);
@@ -31,14 +34,22 @@ extern int HF_ITER(uint8_t**, size_t*);
 int main(int argc, char** argv) {
 
 
-    /* TODO: Figure out how to enable this in devcontainer. */
-/* #if defined(__linux__) && defined(__GLIBC__)
+#if defined(__linux__) && defined(__GLIBC__)
+    /*
+    Exception	Meaning
+      - FE_DIVBYZERO: Division by zero (e.g. 1.0 / 0.0)
+      - FE_INVALID: Invalid operation (e.g. sqrt(-1))
+      - FE_OVERFLOW: Result too large to be represented
+      - FE_UNDERFLOW: Result too small to be represented normally (common, usually harmless)
+      - FE_INEXACT	Rounding occurred during conversion (common, usually harmless)
+    */
+#include <fenv.h>
     extern int feenableexcept(int);
     feclearexcept(FE_ALL_EXCEPT);
-    feenableexcept(FE_ALL_EXCEPT);
-#endif */
+    feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
+#endif 
 
-/* Call user initialization if provided */
+    /* Call user initialization if provided */
     if (LLVMFuzzerInitialize) {
         LLVMFuzzerInitialize(&argc, &argv);
     }

@@ -104,8 +104,13 @@ test: $(TARGET)
 # Your selected fuzzer: {{default_fuzzer}}
 fuzz: fuzz-{{default_fuzzer}}
 
+{{#if (eq default_fuzzer "standalone")}}
+fuzz-{{default_fuzzer}}: lib-fuzz
+	$(MAKE) -C fuzz {{default_fuzzer}}
+{{else}}
 fuzz-{{default_fuzzer}}: lib-{{default_fuzzer}}
 	$(MAKE) -C fuzz {{default_fuzzer}}
+{{/if}}
 
 {{#if (eq default_fuzzer "standalone")}}
 # Additional fuzzer options (install engines as needed)

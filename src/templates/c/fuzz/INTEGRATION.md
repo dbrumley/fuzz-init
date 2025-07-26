@@ -8,17 +8,75 @@ The fuzzing setup is designed to work alongside your existing project without mo
 
 **Key Design Principle**: The fuzz harness needs access to your code, but HOW it gets that access depends on your project structure. This guide shows you multiple approaches to choose from.
 
+## Critical: Sanitizer Instrumentation
+
+**⚠️ IMPORTANT**: For effective fuzzing, both your project code AND the fuzz harness must be compiled with the same sanitizer flags. This ensures consistent instrumentation for bug detection.
+
+### The Problem
+If your main project builds without sanitizer flags (e.g., `gcc -O2 myproject.c`) but the fuzz harness builds with sanitizers (e.g., `clang -fsanitize=address fuzz.c`), you get **mixed instrumentation**:
+
+- ✅ AddressSanitizer will catch bugs in fuzz harness code
+- ❌ AddressSanitizer will NOT catch bugs in your project code (where you want to find bugs!)
+
+### The Solution: Fuzzing Libraries (Makefile Integration)
+{{#if (eq integration "make")}}
+This template automatically handles consistent instrumentation using **fuzzing libraries**:
+
+```bash
+# Parent Makefile builds multiple library versions:
+make lib            # Regular library: libgps.a (no sanitizers)
+make lib-libfuzzer  # Fuzzing library: libgps-libfuzzer.a (with sanitizers)
+make lib-afl        # AFL library: libgps-afl.a (with sanitizers)
+make lib-honggfuzz  # HonggFuzz library: libgps-honggfuzz.a (with sanitizers)
+
+# Fuzz targets automatically use the right library:
+make fuzz-libfuzzer  # Links against libgps-libfuzzer.a
+make fuzz-afl        # Links against libgps-afl.a
+```
+
+**Benefits:**
+- ✅ Consistent sanitizer instrumentation across all code
+- ✅ Normal builds remain fast (no sanitizer overhead)
+- ✅ Different fuzzers can use appropriate sanitizer configurations
+- ✅ No manual flag management required
+{{/if}}
+
+{{#if (eq integration "standalone")}}
+This template handles instrumentation automatically in `build.sh`:
+- All code (project + fuzz harness) compiled with `-fsanitize=address`
+- Consistent instrumentation ensures AddressSanitizer catches all bugs
+- No mixed instrumentation issues
+{{/if}}
+
+{{#if (eq integration "cmake")}}
+The CMake configuration automatically applies appropriate sanitizer flags:
+- Uses `CMAKE_C_FLAGS` with sanitizer options
+- Ensures consistent instrumentation across project and fuzz code
+- Different fuzzer targets use compatible sanitizer configurations
+{{/if}}
+
+### Verification
+To verify consistent instrumentation:
+```bash
+# Check symbols in your fuzzing binary:
+nm your-fuzz-binary | grep -i asan
+# Should show AddressSanitizer symbols from both project and fuzz code
+
+# Or run with verbose sanitizer output:
+ASAN_OPTIONS=verbosity=1 ./your-fuzz-binary
+```
+
 ## Choose Your Integration Approach
 
 Select the approach that best matches your project structure:
 
-### Approach 1: Library Linking (Recommended)
+### Approach 1: Fuzzing Library Linking (Recommended)
 **Best for**: Projects that already build static libraries or can easily be modified to do so.
 
-**How it works**: Your project builds a static library (e.g., `libmyproject.a`), and the fuzz harness links against it using standard `-L` and `-l` flags.
+**How it works**: Your project builds multiple library versions - regular libraries for normal use, and fuzzing libraries with sanitizer instrumentation. The fuzz harness automatically links against the appropriate fuzzing library.
 
-**Pros**: Clean separation, no recompilation of project code, standard linking
-**Cons**: Requires library build capability
+**Pros**: Clean separation, consistent sanitizer instrumentation, no manual flag management, fast normal builds
+**Cons**: Requires library build capability, multiple library versions
 
 ### Approach 2: Direct Source Compilation  
 **Best for**: Projects with source files that can be compiled directly, monolithic codebases.
@@ -91,19 +149,43 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
 ### Step 2: Choose and Implement Your Integration Approach
 
-#### Approach 1: Library Linking (Recommended)
+#### Approach 1: Fuzzing Library Linking (Recommended)
 
+{{#if (eq integration "make")}}
+If your project can build a static library, this approach provides the best sanitizer consistency:
+
+```bash
+# 1. Add library targets to your main Makefile (see parent Makefile for examples):
+lib-libfuzzer: $(LIBFUZZER_LIBRARY)
+$(LIBFUZZER_LIBRARY): $(LIB_SOURCES:.c=-libfuzzer.o)
+	$(AR) rcs $@ $^
+
+# 2. The fuzz/Makefile automatically uses the right library:
+LIBS_LIBFUZZER = -lgps-libfuzzer  # Links with sanitizer-instrumented version
+```
+
+**For Makefile integration:**
+```makefile
+# In fuzz/Makefile, the library selection is automatic:
+INCLUDES = -I../include                    # Path to your headers
+LIBPATH = -L..                            # Path to your libraries
+LIBS_LIBFUZZER = -lgps-libfuzzer          # Sanitizer-instrumented library
+LIBS_AFL = -lgps-afl                      # AFL-compatible library  
+LIBS_HONGGFUZZ = -lgps-honggfuzz          # HonggFuzz-compatible library
+LIBS_STANDALONE = -lgps-fuzz              # General fuzzing library
+
+# Each fuzzer target uses the appropriate library automatically
+```
+{{else}}
 If your project can build a static library, this is the cleanest approach:
 
 ```bash
-# 1. First, make your project build a library
-# In your main project directory:
-make libmyproject.a     # Or however your project builds libraries
+# 1. First, make your project build a library with fuzzing flags
+# In your main project directory, modify your build to support fuzzing:
+FUZZ_CFLAGS="-fsanitize=address" make libmyproject.a
 
-# 2. Edit the fuzz/Makefile to link against it:
+# 2. Edit the fuzz build files to link against it:
 ```
-
-Edit the relevant sections in your build file:
 
 **For Makefile integration:**
 ```makefile
@@ -114,6 +196,7 @@ LIBS = -lmyproject                       # Your library name (without lib prefix
 
 # The build targets will automatically use these
 ```
+{{/if}}
 
 **For CMake integration:**
 ```cmake
