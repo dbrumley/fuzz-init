@@ -49,10 +49,19 @@ This template handles instrumentation automatically in `build.sh`:
 {{/if}}
 
 {{#if (eq integration "cmake")}}
-The CMake configuration automatically applies appropriate sanitizer flags:
-- Uses `CMAKE_C_FLAGS` with sanitizer options
-- Ensures consistent instrumentation across project and fuzz code
-- Different fuzzer targets use compatible sanitizer configurations
+The CMake configuration uses **target dependencies** for automatic library management:
+
+**How it works:**
+- Parent CMakeLists.txt creates fuzzer-specific library targets (e.g., `{{project_name}}-libfuzzer`)
+- fuzz/CMakeLists.txt references these targets directly, not file paths
+- CMake automatically ensures correct build order: library → fuzzer executable
+
+**Library naming convention:**
+- `{{project_name}}-libfuzzer` → builds as `lib{{project_name}}-libfuzzer.a`
+- `{{project_name}}-afl` → builds as `lib{{project_name}}-afl.a`
+- Each library compiled with appropriate sanitizer flags for its fuzzer
+
+**Key advantage:** No manual library path management - CMake handles all dependencies automatically.
 {{/if}}
 
 ### Verification
@@ -105,7 +114,7 @@ Select the approach that best matches your project structure:
 fuzz/
 ├── src/{{target_name}}.c       # Your fuzz target implementation
 ├── driver/main.c               # Universal fuzzer driver
-├── testcases/                  # Initial test inputs
+├── testsuite/                  # Initial test inputs
 ├── dictionaries/               # Fuzzing dictionaries
 ├── Makefile                    # Makefile integration (if selected)
 ├── CMakeLists.txt             # CMake integration (if selected)
@@ -200,9 +209,13 @@ LIBS = -lmyproject                       # Your library name (without lib prefix
 
 **For CMake integration:**
 ```cmake
-# In fuzz/CMakeLists.txt:
-target_include_directories(target_name PRIVATE ../../include)
-target_link_libraries(target_name PRIVATE ../../libmyproject.a)
+# In parent CMakeLists.txt, add fuzzer-specific library targets:
+add_library({{project_name}}-libfuzzer STATIC ${LIB_SOURCES})
+target_compile_options({{project_name}}-libfuzzer PRIVATE -g -O1 -fsanitize=address,fuzzer-no-link)
+target_include_directories({{project_name}}-libfuzzer PUBLIC include)
+
+# The fuzz/CMakeLists.txt automatically uses the target:
+# target_link_libraries(${TARGET_NAME} PRIVATE {{project_name}}-libfuzzer)
 ```
 
 **For standalone build.sh:**
@@ -298,7 +311,7 @@ $(LIBFUZZER_BIN): $(FUZZ_SRC) $(DRIVER_SRC) $(PROJECT_SOURCES)
 Replace the example test cases with inputs relevant to your project:
 
 ```bash
-cd testcases/
+cd testsuite/
 rm -f *  # Remove example files
 
 # Add your own test cases
@@ -347,17 +360,17 @@ make {{default_fuzzer}}
 make test
 
 # Run your fuzzer
-./{{target_name}}-{{default_fuzzer}} testcases/
+./{{target_name}}-{{default_fuzzer}} testsuite/
 {{#if (eq default_fuzzer "libfuzzer")}}
-./{{target_name}}-{{default_fuzzer}} -dict=dictionaries/{{target_name}}.dict testcases/
+./{{target_name}}-{{default_fuzzer}} -dict=dictionaries/{{target_name}}.dict testsuite/
 {{/if}}
 {{#if (eq default_fuzzer "afl")}}
 mkdir -p findings
-afl-fuzz -i testcases -o findings -- ./{{target_name}}-{{default_fuzzer}}
+afl-fuzz -i testsuite -o findings -- ./{{target_name}}-{{default_fuzzer}}
 {{/if}}
 {{#if (eq default_fuzzer "honggfuzz")}}
 mkdir -p corpus  
-honggfuzz -i testcases -W corpus -- ./{{target_name}}-{{default_fuzzer}}
+honggfuzz -i testsuite -W corpus -- ./{{target_name}}-{{default_fuzzer}}
 {{/if}}
 ```
 
@@ -397,22 +410,22 @@ Since you selected **CMake integration** with **{{default_fuzzer}}** as your def
 cd fuzz/
 mkdir build && cd build
 
-cmake ..
-cmake --build . --target {{target_name}}-{{default_fuzzer}}
+CC=clang cmake ..
+cmake --build . --target {{target_name}}_{{default_fuzzer}}
 cmake --build . --target test
 
 # Run your fuzzer
-./{{target_name}}-{{default_fuzzer}} ../testcases/
+./{{target_name}}_{{default_fuzzer}} ../testsuite/
 {{#if (eq default_fuzzer "libfuzzer")}}
-./{{target_name}}-{{default_fuzzer}} -dict=../dictionaries/{{target_name}}.dict ../testcases/
+./{{target_name}}_{{default_fuzzer}} -dict=../dictionaries/{{target_name}}.dict ../testsuite/
 {{/if}}
 {{#if (eq default_fuzzer "afl")}}
 mkdir -p findings
-afl-fuzz -i ../testcases -o findings -- ./{{target_name}}-{{default_fuzzer}}
+afl-fuzz -i ../testsuite -o findings -- ./{{target_name}}_{{default_fuzzer}}
 {{/if}}
 {{#if (eq default_fuzzer "honggfuzz")}}
 mkdir -p corpus
-honggfuzz -i ../testcases -W corpus -- ./{{target_name}}-{{default_fuzzer}}
+honggfuzz -i ../testsuite -W corpus -- ./{{target_name}}_{{default_fuzzer}}
 {{/if}}
 ```
 
@@ -420,10 +433,10 @@ honggfuzz -i ../testcases -W corpus -- ./{{target_name}}-{{default_fuzzer}}
 
 ```bash
 # Build additional fuzzer types
-cmake --build . --target {{target_name}}-standalone
-cmake --build . --target {{target_name}}-afl
-cmake --build . --target {{target_name}}-libfuzzer
-cmake --build . --target {{target_name}}-honggfuzz
+cmake --build . --target {{target_name}}_standalone
+cmake --build . --target {{target_name}}_afl
+cmake --build . --target {{target_name}}_libfuzzer
+cmake --build . --target {{target_name}}_honggfuzz
 ```
 {{/if}}
 
@@ -437,7 +450,7 @@ cd fuzz/
 
 # Build with your default fuzzer
 ./build.sh          # Builds {{default_fuzzer}} by default
-./{{target_name}}-{{default_fuzzer}} testcases/
+./{{target_name}}-{{default_fuzzer}} testsuite/
 
 # Run smoke test
 echo "Test input" | ./{{target_name}}-{{default_fuzzer}}

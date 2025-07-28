@@ -41,7 +41,7 @@ requires = "no requirements"
 # Supported integration types
 [integrations]
 supported = ["standalone", "make", "cmake"]
-default = "standalone"
+default = "make"
 
 [[integrations.options]]
 name = "standalone"
@@ -121,6 +121,8 @@ condition = "minimal == false"
 [[directories]]
 path = "fuzz/testsuite/{{target_name}}"
 create_empty = true  # Create empty directory for corpus files
+
+
 
 # Post-generation hooks (optional future feature)
 [hooks]

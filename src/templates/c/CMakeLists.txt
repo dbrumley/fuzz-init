@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(GPSParserExample C)
+project({{project_name}} C)
 
 set(CMAKE_C_STANDARD 99)
 
@@ -14,36 +14,73 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Source files
-set(GPS_LIB_SOURCES src/gps_parser.c)
+set(LIB_SOURCES src/lib.c)
 
-# Create GPS parser library
-add_library(gps_parser_lib STATIC ${GPS_LIB_SOURCES})
-target_include_directories(gps_parser_lib PUBLIC src)
+# Create main library
+add_library({{project_name}}_lib STATIC ${LIB_SOURCES})
+target_include_directories({{project_name}}_lib PUBLIC include)
+target_compile_options({{project_name}}_lib PRIVATE -g -O0)
 
-# Main GPS parser application
-add_executable(gps_parser src/main.c)
-target_link_libraries(gps_parser gps_parser_lib)
+# Default fuzzer library based on template selection
+{{#if (eq default_fuzzer "libfuzzer")}}
+set(DEFAULT_FUZZER_LIB {{project_name}}-libfuzzer)
+{{/if}}
+{{#if (eq default_fuzzer "afl")}}
+set(DEFAULT_FUZZER_LIB {{project_name}}-afl)
+{{/if}}
+{{#if (eq default_fuzzer "honggfuzz")}}
+set(DEFAULT_FUZZER_LIB {{project_name}}-honggfuzz)
+{{/if}}
+{{#if (eq default_fuzzer "standalone")}}
+set(DEFAULT_FUZZER_LIB {{project_name}}-fuzz)
+{{/if}}
 
-# Custom target to create test data
-add_custom_target(test-data
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/test_data
-    COMMAND ${CMAKE_COMMAND} -E echo "GPGGA,123456.78,1234,N,5678,W,1,08,0.9,545.4,M,46.9,M,,*47" > ${CMAKE_BINARY_DIR}/test_data/valid.nmea
-    COMMAND ${CMAKE_COMMAND} -E echo "GPGGA,123456.78,1,N,0,W,1,08,0.9,545.4,M,46.9,M,,*47" > ${CMAKE_BINARY_DIR}/test_data/divide_by_zero.nmea
-    COMMAND ${CMAKE_COMMAND} -E echo "GPGGA,123456.78,2,N,-79927771,W,1,08,0.9,545.4,M,46.9,M,,*47" > ${CMAKE_BINARY_DIR}/test_data/integer_overflow.nmea
-    COMMAND ${CMAKE_COMMAND} -E echo "GPGGA,123456.78,3,N,-79927771,W,1,08,0.9,545.4,M,46.9,M,,*47" > ${CMAKE_BINARY_DIR}/test_data/oob_read.nmea
-    COMMAND ${CMAKE_COMMAND} -E echo "Invalid GPS data without proper format" > ${CMAKE_BINARY_DIR}/test_data/invalid.nmea
-    COMMENT "Creating test data files"
+# Create main executable
+add_executable({{target_name}} src/main.c)
+target_link_libraries({{target_name}} {{project_name}}_lib)
+
+# Create test data directory target
+add_custom_target(test_data
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/test_data ${CMAKE_BINARY_DIR}/test_data
+    COMMENT "Copying test data to build directory"
 )
 
 # Custom target to test the application
 add_custom_target(test
-    COMMAND $<TARGET_FILE:gps_parser> ${CMAKE_BINARY_DIR}/test_data/valid.nmea
-    COMMAND $<TARGET_FILE:gps_parser> ${CMAKE_BINARY_DIR}/test_data/divide_by_zero.nmea
-    COMMAND $<TARGET_FILE:gps_parser> ${CMAKE_BINARY_DIR}/test_data/integer_overflow.nmea
-    DEPENDS gps_parser test-data
-    COMMENT "Testing GPS parser with sample data"
+    COMMAND $<TARGET_FILE:{{target_name}}> ${CMAKE_BINARY_DIR}/test_data/valid.txt
+    COMMAND echo "=== Out of bound write (OOB Write) ==="
+    COMMAND $<TARGET_FILE:{{target_name}}> ${CMAKE_BINARY_DIR}/test_data/oob_write.txt
+    DEPENDS {{target_name}} test_data
+    COMMENT "Testing {{target_name}} with sample data"
 )
 
+# Fuzz target - builds the default fuzzer
+add_custom_target(fuzz
+    COMMAND ${CMAKE_COMMAND} --build fuzz --target {{target_name}}_{{default_fuzzer}}
+    DEPENDS ${DEFAULT_FUZZER_LIB}
+    COMMENT "Building {{default_fuzzer}} fuzzer"
+)
+
+# Additional fuzzer-specific library targets
+# These match the naming expected by fuzz/CMakeLists.txt
+add_library({{project_name}}-afl STATIC ${LIB_SOURCES})
+target_include_directories({{project_name}}-afl PUBLIC include)
+target_compile_options({{project_name}}-afl PRIVATE -g -O1 -fsanitize=address)
+
+add_library({{project_name}}-libfuzzer STATIC ${LIB_SOURCES})
+target_include_directories({{project_name}}-libfuzzer PUBLIC include)
+target_compile_options({{project_name}}-libfuzzer PRIVATE -g -O1 -fsanitize=address,fuzzer-no-link)
+
+add_library({{project_name}}-honggfuzz STATIC ${LIB_SOURCES})
+target_include_directories({{project_name}}-honggfuzz PUBLIC include)  
+target_compile_options({{project_name}}-honggfuzz PRIVATE -g -O1 -fsanitize=address)
+
+add_library({{project_name}}-fuzz STATIC ${LIB_SOURCES})
+target_include_directories({{project_name}}-fuzz PUBLIC include)
+target_compile_options({{project_name}}-fuzz PRIVATE -g -O1 -fsanitize=address)
+
+# Subdirectory for fuzz targets
+add_subdirectory(fuzz)
+
 # Install targets
-install(TARGETS gps_parser DESTINATION bin)
-install(FILES src/gps_parser.h DESTINATION include)
+install(TARGETS {{target_name}} DESTINATION bin)

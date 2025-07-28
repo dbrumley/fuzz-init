@@ -2,8 +2,8 @@
 
 The easiest way to get started integrating fuzzing into your app is by using
 `fuzz-init`. This CLI tool enables you to quickly start building the proper
-scaffolding and new fuzz harness, with everything set up for you to run in
-Mayhem. You can also create a new skeleton template for a new app that includes
+scaffolding and new fuzz harness, with everything set up for you to run with
+fuzzers like AFL, libfuzzer, and Mayhem.  You can also create a new skeleton template for a new app that includes
 fuzzing and follows best practices.
 
 ## Quick Start
@@ -24,7 +24,7 @@ This will prompt you to:
 To create scaffolding in a specific folder with all options specified:
 
 ```bash
-fuzz-init my-app --language c  --integration make --fuzzer libfuzzer
+fuzz-init myapp --language c  --integration make --fuzzer libfuzzer
 ```
 
 ## Testing Your Setup

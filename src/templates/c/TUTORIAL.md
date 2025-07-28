@@ -5,6 +5,29 @@ Welcome to the complete fuzzing tutorial for {{project_name}}!
 This guide will walk you through the entire process of setting up and running 
 fuzzing on your software.
 
+
+## Quick Start 
+
+To build the application:
+```
+make
+```
+
+The resulting application will be in `build/bin/{{target_name}}`
+
+To show example uses:
+```
+make test
+```
+
+To fuzz:
+```bash
+cd fuzz/
+make {{default_fuzzer}}      # Build the fuzzer
+./{{target_name}}-{{default_fuzzer}} testsuite/  # Run the fuzzer
+```
+
+
 ## What is Fuzzing?
 
 Fuzzing is an automated dynamic analysis technique that discovers software bugs
@@ -20,19 +43,19 @@ Commercial tools like Mayhem take it up a notch by adding
 sophisticated program analysis, such as symbolic execution, to get even better
 results.
 
-## Project Structure
+## Project Structure 
 
 Your fuzzing project has been set up with the following structure:
 
 ```
 {{project_name}}/
-├── src/                            # Example library source code
-│   ├── gps.c                       # GPS parser implementation
+├── src/                            # Example application
+│   ├── lib.c                       # Library functions
 │   └── main.c                      # Example application
 ├── include/
-│   └── gps.h                       # Public library interface
+│   └── lib.h                       # Public library interface
 ├── Makefile                        # Builds library and delegates to fuzz
-├── libgps.a                        # Generated library (after 'make lib')
+├── build/                          # Location for build artifacts
 ├── fuzz/                           # All fuzzing-related files
 │   ├── src/{{target_name}}.c       # Fuzz harness that uses the library
 │   ├── driver/main.c               # Universal fuzzer driver
@@ -47,7 +70,7 @@ Your fuzzing project has been set up with the following structure:
 ```
 
 This example demonstrates the **ideal library-based approach** for fuzzing integration, where:
-- Your main code is built into a library (`libgps.a`)
+- Your main code is built into a library (`lib{{project_name}}.a`)
 - The fuzz harness links against this library cleanly
 - Application logic for reading in input is in a separate file (`main.c`)
 
@@ -87,27 +110,21 @@ Open `fuzz/src/{{target_name}}.c` and examine the fuzz target:
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
-#include <gps.h>
 
-int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-    // Null-terminate the input data
-    char* input = (char*)malloc(size + 1);
-    if (!input) return 0;
-    
-    memcpy(input, data, size);
-    input[size] = '\\0';
-    
-    // Parse GPS data using the library
-    gps_coordinate_t coord;
-    int result = parse_nmea_line(input, &coord);
-    
-    // If parsing succeeded, process the coordinate
-    if (result == 0 && coord.valid) {
-        // Test all bug triggers (0 = all bugs)
-        process_coordinate(coord, 0);
+#include "lib.h"
+
+int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
+    // Example: Process the input data through your library function
+    // Note: Ensure data is properly null-terminated if your function expects a string
+    if (size > 0) {
+        char* null_terminated = (char*)malloc(size + 1);
+        if (null_terminated) {
+            memcpy(null_terminated, data, size);
+            null_terminated[size] = '\\0';
+            process(null_terminated);
+            free(null_terminated);
+        }
     }
-    
-    free(input);
     return 0;
 }
 ```
@@ -116,7 +133,7 @@ This demonstrates **key fuzzing principles**:
 
 1. **Universal Entry Point**: The `LLVMFuzzerTestOneInput` function is the standard interface that works with all fuzzing engines (AFL, libFuzzer, HonggFuzz, standalone)
 
-2. **Input Processing**: Takes raw bytes from the fuzzer and converts them into the format your code expects (here, null-terminated strings for GPS parsing)
+2. **Input Processing**: Takes raw bytes from the fuzzer and converts them into the format your code expects (here, null-terminated strings)
 
 3. **Target Coverage**: Calls library functions that exercise complex logic where bugs might hide
 
@@ -142,9 +159,9 @@ This example demonstrates **coverage-guided fuzzing** - the most effective autom
 
 ### Why This Example Works Well
 
-The GPS parser is an ideal fuzzing target because it:
+This library is an ideal fuzzing target because it:
 - **Processes Untrusted Input**: Takes string data that could come from anywhere
-- **Has Complex Logic**: Parsing involves many code paths and edge cases  
+- **Has Complex Logic**: Processing involves many code paths and edge cases  
 - **Contains Real Bugs**: Intentional vulnerabilities that fuzzing will discover
 - **Fast Execution**: Runs quickly enough for millions of iterations
 
@@ -152,7 +169,7 @@ The GPS parser is an ideal fuzzing target because it:
 
 ```bash
 # 1. Build the library first  
-make lib          # Creates libgps.a from src/gps.c
+make lib          # Creates lib{{project_name}}.a from src/lib.c
 
 # 2. Build fuzzers that link against it
 make fuzz         # Default fuzzer (delegates to fuzz/Makefile)
@@ -169,7 +186,7 @@ The fuzzing Makefile shows the standard pattern:
 ```makefile
 # In fuzz/Makefile
 LIBPATH = -L..
-LIBS = -lgps
+LIBS = -l{{project_name}}
 INCLUDES = -I../include
 ```
 
@@ -246,7 +263,7 @@ Your project is configured for **Makefile integration** with **{{default_fuzzer}
 
 ```bash
 # 1. First, build the library (required)
-make lib    # Creates libgps.a
+make lib    # Creates lib{{project_name}}.a
 
 # 2. Build and test your selected fuzzer
 make fuzz             # Builds {{default_fuzzer}} fuzzer
@@ -301,7 +318,7 @@ Your project is configured for **standalone integration** using build scripts.
 
 ```bash
 # 1. First, build the library (required)
-make lib    # Creates libgps.a
+make lib    # Creates lib{{project_name}}.a
 
 # 2. Build and test the fuzzer
 make fuzz             # Uses build.sh to build {{default_fuzzer}}
@@ -347,18 +364,18 @@ Your project is configured for **CMake integration** with **{{default_fuzzer}}**
 
 ```bash
 # 1. First, build the library (required)
-make lib    # Creates libgps.a
+make lib    # Creates lib{{project_name}}.a
 
 # 2. Build and test the fuzzer
 cd fuzz/
 mkdir build && cd build
-cmake ..
-cmake --build . --target {{target_name}}-{{default_fuzzer}}
+CC=clang cmake ..
+cmake --build . --target {{target_name}}_{{default_fuzzer}}
 
 # 3. Run the fuzzer
-./{{target_name}}-{{default_fuzzer}} ../testsuite/
+./{{target_name}}_{{default_fuzzer}} ../testsuite/
 {{#if (eq default_fuzzer "libfuzzer")}}
-./{{target_name}}-{{default_fuzzer}} -dict=../dictionaries/{{target_name}}.dict ../testsuite/
+./{{target_name}}_{{default_fuzzer}} -dict=../dictionaries/{{target_name}}.dict ../testsuite/
 {{/if}}
 ```
 
@@ -366,10 +383,10 @@ cmake --build . --target {{target_name}}-{{default_fuzzer}}
 
 ```bash
 # Build other fuzzer types
-cmake --build . --target {{target_name}}-standalone
-cmake --build . --target {{target_name}}-afl  
-cmake --build . --target {{target_name}}-libfuzzer
-cmake --build . --target {{target_name}}-honggfuzz
+cmake --build . --target {{target_name}}_standalone
+cmake --build . --target {{target_name}}_afl  
+cmake --build . --target {{target_name}}_libfuzzer
+cmake --build . --target {{target_name}}_honggfuzz
 ```
 {{/if}}
 

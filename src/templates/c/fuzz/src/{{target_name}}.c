@@ -2,26 +2,45 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
-#include <gps.h>
 
-int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-    // Null-terminate the input data
-    char* input = (char*)malloc(size + 1);
-    if (!input) return 0;
-    
-    memcpy(input, data, size);
-    input[size] = '\0';
-    
-    // Parse GPS data
-    gps_coordinate_t coord;
-    int result = parse_nmea_line(input, &coord);
-    
-    // If parsing succeeded, process the coordinate
-    if (result == 0 && coord.valid) {
-        // Test all bug triggers (0 = all bugs)
-        process_coordinate(coord, 0);
+{{#if (eq minimal false)}}
+#include "lib.h"
+{{else}}
+// TODO: Add your project's header files here
+// Example: #include "your_lib.h"
+{{/if}}
+
+int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
+{{#if (eq minimal false)}}
+    // Example: Process the input data through your library function
+    // Note: Ensure data is properly null-terminated if your function expects a string
+    if (size > 0) {
+        char* null_terminated = (char*)malloc(size + 1);
+        if (null_terminated) {
+            memcpy(null_terminated, data, size);
+            null_terminated[size] = '\0';
+            process(null_terminated);
+            free(null_terminated);
+        }
     }
+{{else}}
+    // TODO: Add your fuzzing logic here
+    // This function is called by the fuzzer with test data
+    // 
+    // Example:
+    // - Parse the input data according to your format
+    // - Call your library functions with the parsed data
+    // - Handle any necessary cleanup
+    //
+    // Tips:
+    // - The fuzzer will call this function repeatedly with different inputs
+    // - Avoid using global state that persists between calls
+    // - Consider adding bounds checking for size
+    // - Remember to free any allocated memory
     
-    free(input);
+    // Placeholder to prevent unused parameter warnings
+    (void)data;
+    (void)size;
+{{/if}}
     return 0;
 }
