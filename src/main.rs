@@ -792,6 +792,100 @@ fn get_template_name(template_source: &TemplateSource) -> String {
     }
 }
 
+fn print_next_steps(project_name: &str, default_fuzzer: &str, integration_type: &str, minimal_mode: bool, metadata: Option<&TemplateMetadata>) {
+    println!();
+    println!("🚀 Next steps:");
+    println!("==============");
+    
+    // Step 1: Change directory
+    println!("1. cd {}", project_name);
+    
+    // Generic instructions that work for all templates
+    match integration_type {
+        "cmake" => {
+            println!("2. mkdir build && cd build");
+            if default_fuzzer == "libfuzzer" {
+                println!("3. CC=clang cmake ..");
+            } else {
+                println!("3. cmake ..");
+            }
+            println!("4. cmake --build . --target fuzz");
+        }
+        "make" => {
+            println!("2. make fuzz             # Build the fuzzer");
+        }
+        "standalone" => {
+            println!("2. cd fuzz");
+            println!("3. ./build.sh           # Build with {} fuzzer", default_fuzzer);
+        }
+        _ => {
+            // Use template metadata if available for unknown types
+            if let Some(template_meta) = metadata {
+                if let Some(integration_config) = &template_meta.integrations {
+                    if let Some(integration_option) = integration_config.options.iter().find(|opt| opt.name == integration_type) {
+                        println!("2. # {} - {}", integration_type, integration_option.description);
+                        println!("3. # See INTEGRATION.md for detailed instructions");
+                    } else {
+                        println!("2. # Follow build instructions in INTEGRATION.md");
+                    }
+                } else {
+                    println!("2. # Follow build instructions in INTEGRATION.md");
+                }
+            } else {
+                println!("2. # Follow build instructions in INTEGRATION.md");
+            }
+        }
+    }
+    
+    // Generic run instructions
+    println!();
+    println!("🔍 Run your fuzzer:");
+    match integration_type {
+        "cmake" => {
+            println!("   cd fuzz/build && ./{}_{} ../testsuite/", project_name, default_fuzzer);
+        }
+        "make" | "standalone" => {
+            println!("   cd fuzz && ./{}  testsuite/", format!("{}-{}", project_name, default_fuzzer));
+        }
+        _ => {
+            println!("   # See fuzz/README.md for run instructions");
+        }
+    }
+    
+    // Documentation pointers
+    println!();
+    println!("📚 Documentation:");
+    if minimal_mode {
+        println!("   • fuzz/INTEGRATION.md  - Integration guide for existing projects");
+        println!("   • fuzz/README.md       - Quick reference for fuzzing commands");
+    } else {
+        println!("   • TUTORIAL.md          - Complete fuzzing tutorial and examples");
+        println!("   • fuzz/INTEGRATION.md  - Integration guide for existing projects");
+        println!("   • fuzz/README.md       - Quick reference for fuzzing commands");
+    }
+    
+    // Template-specific information from metadata
+    if let Some(template_meta) = metadata {
+        println!();
+        println!("💡 Template info:");
+        println!("   • Language: {}", template_meta.template.name);
+        println!("   • Description: {}", template_meta.template.description);
+        
+        if let Some(fuzzer_config) = &template_meta.fuzzers {
+            let other_fuzzers: Vec<&str> = fuzzer_config.supported.iter()
+                .filter(|&f| f != default_fuzzer)
+                .map(|s| s.as_str())
+                .collect();
+            if !other_fuzzers.is_empty() {
+                println!("   • Other fuzzer types available: {}", other_fuzzers.join(", "));
+            }
+        }
+    }
+    
+    println!();
+    println!("Happy fuzzing! 🐛");
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
@@ -846,76 +940,106 @@ async fn main() -> anyhow::Result<()> {
     let out_path = Path::new(&out_path_string);
     process_template_directory(&template_dir, out_path, &handlebars, &data, metadata.as_ref())?;
     
-    // Success message
+    // Success message with next steps
     let template_name = get_template_name(&template_source);
     println!("Project '{}' created with {} template!", project_name, template_name);
+    
+    print_next_steps(&project_name, &default_fuzzer, &integration_type, minimal_mode, metadata.as_ref());
+    
     Ok(())
 }
 
 async fn run_template_tests() -> anyhow::Result<()> {
-    println!("🧪 Running template tests...\n");
+    println!("🧪 Running comprehensive template tests...\n");
+    
+    // Create test output directory
+    let test_dir = Path::new("./template-tests");
+    if test_dir.exists() {
+        println!("🗑️  Removing existing test directory...");
+        fs::remove_dir_all(test_dir)?;
+    }
+    fs::create_dir_all(test_dir)?;
+    println!("📁 Created test directory: {}", test_dir.display());
     
     let available_templates = get_available_templates()?;
-    let mut test_results = Vec::new();
+    let mut all_combinations = Vec::new();
+    
+    // Phase 1: Generate all template combinations
+    println!("\n📦 Phase 1: Generating all template combinations...");
+    println!("================================================");
     
     for template_name in &available_templates {
-        println!("Testing template: {}", template_name);
-        let result = test_template(template_name).await;
-        test_results.push((template_name.clone(), result));
-        println!();
+        println!("Processing template: {}", template_name);
+        
+        // Load template metadata to get all options
+        let template_dir = std::env::current_dir()?.join("src/templates").join(template_name);
+        let metadata = load_template_metadata(&template_dir)?;
+        
+        let combinations = generate_template_combinations(template_name, &metadata, &template_dir, test_dir).await?;
+        all_combinations.extend(combinations);
+        
+        println!("  Generated {} combinations", all_combinations.len());
     }
     
-    // Print summary
-    println!("📊 Test Summary:");
-    println!("================");
+    println!("\n✅ Generated {} total template combinations in {}", all_combinations.len(), test_dir.display());
+    
+    // Phase 2: Test all generated combinations
+    println!("\n🔧 Phase 2: Testing builds for all combinations...");
+    println!("================================================");
+    
+    let mut test_results = Vec::new();
     let mut passed = 0;
     let mut failed = 0;
     
-    for (template_name, result) in &test_results {
-        match result {
-            Ok(fuzzer_results) => {
-                let fuzzer_passed = fuzzer_results.iter().filter(|(_, success)| *success).count();
-                let fuzzer_total = fuzzer_results.len();
-                
-                if fuzzer_passed == fuzzer_total {
-                    println!("✅ {} - All {} fuzzer modes passed", template_name, fuzzer_total);
-                    passed += 1;
-                } else {
-                    println!("❌ {} - {}/{} fuzzer modes passed", template_name, fuzzer_passed, fuzzer_total);
-                    for (fuzzer_type, success) in fuzzer_results {
-                        if !success {
-                            println!("   └─ ❌ {} failed", fuzzer_type);
-                        }
-                    }
-                    failed += 1;
-                }
-            }
-            Err(e) => {
-                println!("❌ {} - Template failed: {}", template_name, e);
-                failed += 1;
-            }
+    for (combination_name, combination_path) in &all_combinations {
+        println!("Testing: {}", combination_name);
+        
+        let success = test_combination_build(combination_path).await?;
+        test_results.push((combination_name.clone(), success));
+        
+        if success {
+            println!("  ✅ Build successful");
+            passed += 1;
+        } else {
+            println!("  ❌ Build failed");
+            failed += 1;
         }
     }
     
-    println!("\nFinal Result: {}/{} templates passed", passed, passed + failed);
+    // Print final summary
+    println!("\n📊 Final Test Summary:");
+    println!("====================");
+    println!("Total combinations generated: {}", all_combinations.len());
+    println!("Build tests passed: {}", passed);
+    println!("Build tests failed: {}", failed);
+    println!("Test output directory: {}", test_dir.display());
     
     if failed > 0 {
-        anyhow::bail!("Some templates failed testing");
+        println!("\n❌ Failed combinations:");
+        for (combination_name, success) in &test_results {
+            if !success {
+                println!("   • {}", combination_name);
+            }
+        }
+        println!("\n💡 You can inspect the generated projects in {} and manually debug build issues.", test_dir.display());
+        anyhow::bail!("{} out of {} template combinations failed build tests", failed, all_combinations.len());
     }
+    
+    println!("\n🎉 All template combinations generated and tested successfully!");
+    println!("💡 You can inspect the generated projects in {} before deleting for check-in.", test_dir.display());
     
     Ok(())
 }
 
-async fn test_template(template_name: &str) -> anyhow::Result<Vec<(String, bool)>> {
-    // Create temporary directory for testing
-    let temp_dir = tempfile::tempdir()?;
-    let test_project_name = format!("test-{}", template_name);
-    let test_project_path = temp_dir.path().join(&test_project_name);
+async fn generate_template_combinations(
+    template_name: &str, 
+    metadata: &Option<TemplateMetadata>, 
+    template_dir: &Path,
+    test_dir: &Path
+) -> anyhow::Result<Vec<(String, PathBuf)>> {
+    let mut combinations = Vec::new();
     
-    // Load template metadata to get fuzzer options
-    let template_dir = std::env::current_dir()?.join("src/templates").join(template_name);
-    let metadata = load_template_metadata(&template_dir)?;
-    
+    // Get all possible options from metadata
     let fuzzer_options = if let Some(ref metadata) = metadata {
         if let Some(ref fuzzer_config) = metadata.fuzzers {
             fuzzer_config.options.iter().map(|opt| opt.name.clone()).collect()
@@ -926,82 +1050,258 @@ async fn test_template(template_name: &str) -> anyhow::Result<Vec<(String, bool)
         vec!["standalone".to_string()]
     };
     
-    println!("  Fuzzer options: {}", fuzzer_options.join(", "));
-    
-    let mut fuzzer_results = Vec::new();
-    
-    for fuzzer_type in &fuzzer_options {
-        println!("  Testing fuzzer: {}", fuzzer_type);
-        
-        // Generate template with this fuzzer as default
-        let mut handlebars = Handlebars::new();
-        
-        // Register the 'eq' helper for conditional templating
-        handlebars.register_helper("eq", Box::new(|h: &handlebars::Helper, _: &handlebars::Handlebars, _: &handlebars::Context, _: &mut handlebars::RenderContext, out: &mut dyn handlebars::Output| -> handlebars::HelperResult {
-            let param0 = h.param(0).and_then(|v| v.value().as_str()).unwrap_or("");
-            let param1 = h.param(1).and_then(|v| v.value().as_str()).unwrap_or("");
-            if param0 == param1 {
-                out.write("true")?;
-            }
-            Ok(())
-        }));
-        
-        let data = json!({ 
-            "project_name": test_project_name,
-            "target_name": test_project_name,
-            "default_fuzzer": fuzzer_type,
-            "integration": "standalone", // Default for testing
-            "minimal": false
-        });
-        
-        // Clean up any existing test project
-        if test_project_path.exists() {
-            fs::remove_dir_all(&test_project_path)?;
-        }
-        
-        // Generate template
-        process_template_directory(&template_dir, &test_project_path, &handlebars, &data, metadata.as_ref())?;
-        
-        // Test if this template can build
-        let success = test_template_build(&test_project_path, fuzzer_type).await?;
-        fuzzer_results.push((fuzzer_type.clone(), success));
-        
-        if success {
-            println!("    ✅ Build successful");
+    let integration_options = if let Some(ref metadata) = metadata {
+        if let Some(ref integration_config) = metadata.integrations {
+            integration_config.options.iter().map(|opt| opt.name.clone()).collect()
         } else {
-            println!("    ❌ Build failed");
+            vec!["standalone".to_string()]
+        }
+    } else {
+        vec!["standalone".to_string()]
+    };
+    
+    let minimal_options = vec![false, true];
+    
+    println!("  Fuzzer options: {}", fuzzer_options.join(", "));
+    println!("  Integration options: {}", integration_options.join(", "));
+    println!("  Minimal modes: {}", minimal_options.iter().map(|b| if *b { "minimal" } else { "full" }).collect::<Vec<_>>().join(", "));
+    
+    // Generate all combinations
+    for fuzzer in &fuzzer_options {
+        for integration in &integration_options {
+            for &minimal in &minimal_options {
+                let combination_name = format!(
+                    "{}-{}-{}-{}",
+                    template_name,
+                    fuzzer,
+                    integration,
+                    if minimal { "minimal" } else { "full" }
+                );
+                let combination_path = test_dir.join(&combination_name);
+                
+                println!("    Generating: {}", combination_name);
+                
+                // Generate this specific combination
+                let mut handlebars = Handlebars::new();
+                
+                // Register the 'eq' helper for conditional templating
+                handlebars.register_helper("eq", Box::new(|h: &handlebars::Helper, _: &handlebars::Handlebars, _: &handlebars::Context, _: &mut handlebars::RenderContext, out: &mut dyn handlebars::Output| -> handlebars::HelperResult {
+                    let param0 = h.param(0).and_then(|v| v.value().as_str()).unwrap_or("");
+                    let param1 = h.param(1).and_then(|v| v.value().as_str()).unwrap_or("");
+                    if param0 == param1 {
+                        out.write("true")?;
+                    }
+                    Ok(())
+                }));
+                
+                let project_name = format!("test-{}", template_name);
+                let data = json!({ 
+                    "project_name": project_name,
+                    "target_name": project_name,
+                    "default_fuzzer": fuzzer,
+                    "integration": integration,
+                    "minimal": minimal
+                });
+                
+                // Clean up any existing combination directory
+                if combination_path.exists() {
+                    fs::remove_dir_all(&combination_path)?;
+                }
+                
+                // Generate template
+                process_template_directory(template_dir, &combination_path, &handlebars, &data, metadata.as_ref())?;
+                
+                combinations.push((combination_name, combination_path));
+            }
         }
     }
     
-    Ok(fuzzer_results)
+    Ok(combinations)
 }
 
-async fn test_template_build(project_path: &Path, fuzzer_type: &str) -> anyhow::Result<bool> {
-    // Look for build script
-    let build_script = project_path.join("fuzz").join("build.sh");
-    if !build_script.exists() {
-        // For simple templates without build scripts, just check if files were created
-        return Ok(project_path.exists());
-    }
+async fn test_combination_build(combination_path: &Path) -> anyhow::Result<bool> {
+    // Determine build strategy based on what files exist
+    let fuzz_dir = combination_path.join("fuzz");
     
-    // Change to project directory and run build
-    let output = Command::new("bash")
-        .arg("build.sh")
-        .current_dir(project_path.join("fuzz"))
-        .env("FUZZER_TYPE", fuzzer_type)
-        .output();
+    // Try different build methods in order of preference
     
-    match output {
-        Ok(output) => {
-            let success = output.status.success();
-            if !success {
-                println!("    Build stderr: {}", String::from_utf8_lossy(&output.stderr));
+    // 1. Try Makefile in root directory (full template)
+    let root_makefile = combination_path.join("Makefile");
+    if root_makefile.exists() {
+        println!("    Using root Makefile build");
+        let output = Command::new("make")
+            .arg("fuzz")
+            .current_dir(combination_path)
+            .output();
+        
+        return match output {
+            Ok(output) => {
+                let success = output.status.success();
+                if !success {
+                    println!("    Build stderr: {}", String::from_utf8_lossy(&output.stderr));
+                }
+                Ok(success)
             }
-            Ok(success)
-        }
-        Err(e) => {
-            println!("    Build error: {}", e);
-            Ok(false) // Don't fail the entire test, just mark this fuzzer as failed
+            Err(e) => {
+                println!("    Build error: {}", e);
+                Ok(false)
+            }
+        };
+    }
+    
+    // 2. Try CMake in root directory (full template)
+    let root_cmake = combination_path.join("CMakeLists.txt");
+    if root_cmake.exists() {
+        println!("    Using root CMake build");
+        let build_dir = combination_path.join("build");
+        fs::create_dir_all(&build_dir)?;
+        
+        // Configure
+        let configure_output = Command::new("cmake")
+            .arg("..")
+            .env("CC", "clang")  // Use clang for libFuzzer support
+            .current_dir(&build_dir)
+            .output();
+        
+        if let Ok(output) = configure_output {
+            if output.status.success() {
+                // Build
+                let build_output = Command::new("cmake")
+                    .arg("--build")
+                    .arg(".")
+                    .arg("--target")
+                    .arg("fuzz")
+                    .current_dir(&build_dir)
+                    .output();
+                
+                return match build_output {
+                    Ok(output) => {
+                        let success = output.status.success();
+                        if !success {
+                            println!("    Build stderr: {}", String::from_utf8_lossy(&output.stderr));
+                        }
+                        Ok(success)
+                    }
+                    Err(e) => {
+                        println!("    Build error: {}", e);
+                        Ok(false)
+                    }
+                };
+            }
         }
     }
+    
+    // 3. Try build script in fuzz directory
+    let build_script = fuzz_dir.join("build.sh");
+    if build_script.exists() {
+        println!("    Using fuzz/build.sh");
+        let output = Command::new("bash")
+            .arg("build.sh")
+            .current_dir(&fuzz_dir)
+            .output();
+        
+        return match output {
+            Ok(output) => {
+                let success = output.status.success();
+                if !success {
+                    println!("    Build stderr: {}", String::from_utf8_lossy(&output.stderr));
+                }
+                Ok(success)
+            }
+            Err(e) => {
+                println!("    Build error: {}", e);
+                Ok(false)
+            }
+        };
+    }
+    
+    // 4. Try Makefile in fuzz directory
+    let fuzz_makefile = fuzz_dir.join("Makefile");
+    if fuzz_makefile.exists() {
+        println!("    Using fuzz/Makefile");
+        
+        // First try to build the library if we're in a full template
+        let root_makefile = combination_path.join("Makefile");
+        if root_makefile.exists() {
+            let lib_output = Command::new("make")
+                .arg("lib")
+                .current_dir(combination_path)
+                .output();
+            
+            if let Ok(output) = lib_output {
+                if !output.status.success() {
+                    println!("    Library build failed: {}", String::from_utf8_lossy(&output.stderr));
+                    return Ok(false);
+                }
+            }
+        }
+        
+        // Then build the fuzzer
+        let output = Command::new("make")
+            .current_dir(&fuzz_dir)
+            .output();
+        
+        return match output {
+            Ok(output) => {
+                let success = output.status.success();
+                if !success {
+                    println!("    Build stderr: {}", String::from_utf8_lossy(&output.stderr));
+                }
+                Ok(success)
+            }
+            Err(e) => {
+                println!("    Build error: {}", e);
+                Ok(false)
+            }
+        };
+    }
+    
+    // 5. Try CMake in fuzz directory
+    let fuzz_cmake = fuzz_dir.join("CMakeLists.txt");
+    if fuzz_cmake.exists() {
+        println!("    Using fuzz/CMakeLists.txt");
+        let build_dir = fuzz_dir.join("build");
+        fs::create_dir_all(&build_dir)?;
+        
+        // Configure
+        let configure_output = Command::new("cmake")
+            .arg("..")
+            .env("CC", "clang")  // Use clang for libFuzzer support
+            .current_dir(&build_dir)
+            .output();
+        
+        if let Ok(output) = configure_output {
+            if output.status.success() {
+                // Build
+                let build_output = Command::new("cmake")
+                    .arg("--build")
+                    .arg(".")
+                    .current_dir(&build_dir)
+                    .output();
+                
+                return match build_output {
+                    Ok(output) => {
+                        let success = output.status.success();
+                        if !success {
+                            println!("    Build stderr: {}", String::from_utf8_lossy(&output.stderr));
+                        }
+                        Ok(success)
+                    }
+                    Err(e) => {
+                        println!("    Build error: {}", e);
+                        Ok(false)
+                    }
+                };
+            }
+        }
+    }
+    
+    // 6. For simple templates without build systems, just check if files were created
+    if combination_path.exists() && fuzz_dir.exists() {
+        println!("    Simple template - checking file generation only");
+        return Ok(true);
+    }
+    
+    println!("    No build system found");
+    Ok(false)
 }
