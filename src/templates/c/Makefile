@@ -79,9 +79,20 @@ $(OBJ_DIR)/%-$(LIBRARY_SUFFIX).o: $(SRC_DIR)/%.c
 	@mkdir -p $(OBJ_DIR)
 	$(FUZZ_CC) $(FUZZER_CFLAGS) -c -o $@ $< 2>/dev/null || clang $(FUZZER_CFLAGS) -c -o $@ $<
 
-test: $(TARGET)
-	@echo "=== Valid input ==="; ./$(TARGET) test_data/valid.txt
-	@echo "=== Out of bound write (OOB Write) ==="; ./$(TARGET) test_data/oob_write.txt
+{{#unless minimal}}
+test: $(LIBRARY)
+	@echo "Running unit tests..."
+	$(MAKE) -C test test
+
+integration-test: $(TARGET)
+	@echo "Running integration tests with sample data..."
+	@echo "=== Valid input ==="; ./$(TARGET) test_data/valid.nmea
+	@echo "=== Out of bound write (OOB Write) ==="; ./$(TARGET) test_data/oob_read.nmea
+{{else}}
+test:
+	@echo "Minimal mode: Unit tests not included"
+	@echo "For testing guidance, see full mode template or fuzz/INTEGRATION.md"
+{{/unless}}
 
 fuzz: lib-$(LIBRARY_SUFFIX)
 	$(MAKE) -C fuzz LIBRARY_SUFFIX=$(LIBRARY_SUFFIX)
@@ -117,8 +128,14 @@ fuzz-standalone:
 	$(MAKE) LIBRARY_SUFFIX=fuzz FUZZ_CC=clang FUZZER_CFLAGS="-g -O1 -I$(INC_DIR) -fsanitize=address" lib-fuzz
 	$(MAKE) -C fuzz LIBRARY_SUFFIX=fuzz
 
+{{#unless minimal}}
 clean: 
 	rm -rf $(BUILD_DIR)
+	$(MAKE) -C test clean
+{{else}}
+clean: 
+	rm -rf $(BUILD_DIR)
+{{/unless}}
 
 help:
 	@echo "Targets:"
@@ -128,7 +145,12 @@ help:
 	@echo "  lib-libfuzzer - Build libFuzzer-instrumented library"
 	@echo "  lib-honggfuzz - Build HonggFuzz-instrumented library"
 	@echo "  lib-standalone - Build standalone fuzzing library"
-	@echo "  test         - Run normal tests"
+{{#unless minimal}}
+	@echo "  test         - Build and run unit tests"
+	@echo "  integration-test - Build and test main executable with test data"
+{{else}}
+	@echo "  test         - Show testing info (minimal mode)"
+{{/unless}}
 	@echo "  fuzz         - Build default fuzzer ({{default_fuzzer}})"
 	@echo "  fuzz-afl     - Build AFL fuzzer"
 	@echo "  fuzz-libfuzzer - Build libFuzzer"

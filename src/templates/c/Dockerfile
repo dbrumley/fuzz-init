@@ -12,6 +12,9 @@ WORKDIR /app
 # Build the main application library first
 RUN make lib
 
+# Run unit tests to verify library functionality
+RUN make test
+
 # Build the fuzzer using the appropriate target
 RUN make fuzz-{{default_fuzzer}}
 {{else}}

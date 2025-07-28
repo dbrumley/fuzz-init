@@ -64,7 +64,7 @@ files = ["fuzz/CMakeLists.txt", "fuzz/INTEGRATION.md"]
 always_include = ["fuzz"]
 
 # Directories only in full mode (tutorial/example content)
-full_mode_only = ["src", "include"]
+full_mode_only = ["src", "include", "test", "test_data"]
 
 # File extensions that should be templated
 template_extensions = [".c", ".h", ".md", ".sh", ".toml", ".txt"]

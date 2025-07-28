@@ -45,14 +45,33 @@ add_custom_target(test_data
     COMMENT "Copying test data to build directory"
 )
 
-# Custom target to test the application
-add_custom_target(test
-    COMMAND $<TARGET_FILE:{{target_name}}> ${CMAKE_BINARY_DIR}/test_data/valid.txt
+{{#unless minimal}}
+# Add test subdirectory (unit tests)
+add_subdirectory(test)
+
+# Custom target for integration testing with sample data
+add_custom_target(integration_test
+    COMMAND $<TARGET_FILE:{{target_name}}> ${CMAKE_BINARY_DIR}/test_data/valid.nmea
     COMMAND echo "=== Out of bound write (OOB Write) ==="
-    COMMAND $<TARGET_FILE:{{target_name}}> ${CMAKE_BINARY_DIR}/test_data/oob_write.txt
+    COMMAND $<TARGET_FILE:{{target_name}}> ${CMAKE_BINARY_DIR}/test_data/oob_read.nmea
     DEPENDS {{target_name}} test_data
-    COMMENT "Testing {{target_name}} with sample data"
+    COMMENT "Running integration tests with sample data"
 )
+
+# Override default test target to run unit tests
+add_custom_target(test
+    COMMAND ${CMAKE_COMMAND} --build . --target run_tests
+    DEPENDS test_{{project_name}}
+    COMMENT "Running unit tests"
+)
+{{else}}
+# Minimal mode - no unit tests, only basic integration test
+add_custom_target(test
+    COMMAND echo "Minimal mode: Unit tests not included"
+    COMMAND echo "For testing guidance, see full mode template or fuzz/INTEGRATION.md"
+    COMMENT "Testing info for minimal mode"
+)
+{{/unless}}
 
 # Fuzz target - builds the default fuzzer
 add_custom_target(fuzz
