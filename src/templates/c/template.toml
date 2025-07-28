@@ -11,7 +11,7 @@ target_name = { default = "target1", description = "Name of the fuzz target" }
 
 # Supported fuzzers for this template
 [fuzzers]
-supported = ["afl", "libfuzzer", "hongfuzz", "standalone"]
+supported = ["afl", "libfuzzer", "honggfuzz", "standalone"]
 default = "libfuzzer"
 
 [[fuzzers.options]]
@@ -27,7 +27,7 @@ description = "Best for libraries"
 requires = "requires clang with libFuzzer support"
 
 [[fuzzers.options]]
-name = "hongfuzz"
+name = "honggfuzz"
 display_name = "HonggFuzz"
 description = "Alternative to both AFL and libFuzzer"
 requires = "requires honggfuzz"

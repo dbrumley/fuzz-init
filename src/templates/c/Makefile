@@ -46,9 +46,9 @@ FUZZER_CFLAGS := -g -O1 -I$(INC_DIR) -fsanitize=address
 LIB_SOURCES := $(SRC_DIR)/lib.c
 MAIN_SRC := $(SRC_DIR)/main.c
 
-LIBRARY := $(BUILD_DIR)/libexample.a
-FUZZ_LIBRARY := $(BUILD_DIR)/libexample-$(LIBRARY_SUFFIX).a
-TARGET := $(BIN_DIR)/hello_fuzz
+LIBRARY := $(BUILD_DIR)/lib{{project_name}}.a
+FUZZ_LIBRARY := $(BUILD_DIR)/lib{{project_name}}-$(LIBRARY_SUFFIX).a
+TARGET := $(BIN_DIR)/{{target_name}}
 
 LIB_OBJECTS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(LIB_SOURCES))
 FUZZ_OBJECTS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%-$(LIBRARY_SUFFIX).o,$(LIB_SOURCES))
@@ -102,19 +102,19 @@ lib-$(LIBRARY_SUFFIX): $(FUZZ_LIBRARY)
 
 # Fuzzer-specific targets
 fuzz-afl:
-	$(MAKE) LIBRARY_SUFFIX=afl FUZZ_CC=afl-clang-fast FUZZER_CFLAGS="-g -O1 -I$(INC_DIR) -fsanitize=address" $(FUZZ_LIBRARY)
+	$(MAKE) LIBRARY_SUFFIX=afl FUZZ_CC=afl-clang-fast FUZZER_CFLAGS="-g -O1 -I$(INC_DIR) -fsanitize=address" lib-afl
 	$(MAKE) -C fuzz LIBRARY_SUFFIX=afl
 
 fuzz-libfuzzer:
-	$(MAKE) LIBRARY_SUFFIX=libfuzzer FUZZ_CC=clang FUZZER_CFLAGS="-g -O1 -I$(INC_DIR) -fsanitize=address,fuzzer-no-link" $(FUZZ_LIBRARY)
+	$(MAKE) LIBRARY_SUFFIX=libfuzzer FUZZ_CC=clang FUZZER_CFLAGS="-g -O1 -I$(INC_DIR) -fsanitize=address,fuzzer-no-link" lib-libfuzzer
 	$(MAKE) -C fuzz LIBRARY_SUFFIX=libfuzzer
 
 fuzz-honggfuzz:
-	$(MAKE) LIBRARY_SUFFIX=honggfuzz FUZZ_CC=hfuzz-clang FUZZER_CFLAGS="-g -O1 -I$(INC_DIR) -fsanitize=address" $(FUZZ_LIBRARY)
+	$(MAKE) LIBRARY_SUFFIX=honggfuzz FUZZ_CC=hfuzz-clang FUZZER_CFLAGS="-g -O1 -I$(INC_DIR) -fsanitize=address" lib-honggfuzz
 	$(MAKE) -C fuzz LIBRARY_SUFFIX=honggfuzz
 
 fuzz-standalone:
-	$(MAKE) LIBRARY_SUFFIX=fuzz FUZZ_CC=clang FUZZER_CFLAGS="-g -O1 -I$(INC_DIR) -fsanitize=address" $(FUZZ_LIBRARY)
+	$(MAKE) LIBRARY_SUFFIX=fuzz FUZZ_CC=clang FUZZER_CFLAGS="-g -O1 -I$(INC_DIR) -fsanitize=address" lib-fuzz
 	$(MAKE) -C fuzz LIBRARY_SUFFIX=fuzz
 
 clean: 

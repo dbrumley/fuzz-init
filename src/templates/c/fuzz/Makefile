@@ -38,13 +38,13 @@ LIBRARY_SUFFIX = fuzz
 {{/if}}
 
 # Build directories and paths
-{{#if (eq minimal false)}}
+{{#unless minimal}}
 # Full mode - integrated with parent project
 BUILD_DIR = ../build
 FUZZ_BUILD_DIR = ../build/fuzz
 INCLUDES = -I../include
 LIBPATH = -L$(BUILD_DIR)
-LIBRARY_NAME = libexample-$(LIBRARY_SUFFIX).a
+LIBRARY_NAME = lib{{project_name}}-$(LIBRARY_SUFFIX).a
 LIBRARY_PATH = $(BUILD_DIR)/$(LIBRARY_NAME)
 {{else}}
 # Minimal mode - standalone fuzz directory
@@ -54,7 +54,7 @@ INCLUDES = -I./include  # TODO: Add your project's include directories
 LIBPATH = -L./lib       # TODO: Add path to your instrumented library
 LIBRARY_NAME = lib{{project_name}}-$(LIBRARY_SUFFIX).a
 LIBRARY_PATH = ./lib/$(LIBRARY_NAME)
-{{/if}}
+{{/unless}}
 
 # Source files
 FUZZ_SRC = src/{{target_name}}.c
@@ -68,7 +68,7 @@ SOURCES = $(FUZZ_SRC) $(DRIVER_SRC)
 {{/if}}
 
 # Library to link against
-LIBS = -lexample-$(LIBRARY_SUFFIX)
+LIBS = -l{{project_name}}-$(LIBRARY_SUFFIX)
 
 # Build configuration based on integration type
 {{#if (eq integration "make")}}
@@ -157,7 +157,7 @@ clean:
 
 # Library check - ensures appropriate fuzzing library exists
 check-library:
-{{#if (eq minimal false)}}
+{{#unless minimal}}
 	@echo "Checking for instrumented library..."
 	@if [ ! -f $(LIBRARY_PATH) ]; then \
 		echo "Error: Instrumented library not found at $(LIBRARY_PATH)"; \
@@ -169,21 +169,32 @@ check-library:
 	fi
 	@echo "✓ Library found: $(LIBRARY_PATH)"
 {{else}}
-	@echo "Checking for instrumented library..."
-	@echo "IMPORTANT: Your library must be compiled with fuzzer instrumentation!"
-	@echo "For {{default_fuzzer}}, compile with: $(FUZZER_FLAGS)"
-	@if [ ! -f $(LIBRARY_PATH) ]; then \
+	@echo "Minimal mode: Checking for library or source files..."
+	@# Try to find library in common locations
+	@if [ -f $(LIBRARY_PATH) ]; then \
+		echo "✓ Found library: $(LIBRARY_PATH)"; \
+	elif [ -f "../lib{{project_name}}-$(LIBRARY_SUFFIX).a" ]; then \
+		echo "✓ Found library: ../lib{{project_name}}-$(LIBRARY_SUFFIX).a"; \
+	elif [ -f "../src/lib.c" ] && [ -f "../include/lib.h" ]; then \
+		echo "✓ Found source files, will compile directly"; \
+		echo "  Sources: ../src/lib.c"; \
+		echo "  Headers: ../include/lib.h"; \
+	else \
 		echo ""; \
-		echo "Error: Library not found at $(LIBRARY_PATH)"; \
-		echo "Please provide your instrumented library before fuzzing."; \
+		echo "⚠️  No library or source files found."; \
 		echo ""; \
-		echo "Example build command for your library:"; \
+		echo "For fuzzing, you need either:"; \
+		echo "  1. Instrumented library: $(LIBRARY_PATH)"; \
+		echo "  2. Source files: ../src/lib.c and ../include/lib.h"; \
+		echo ""; \
+		echo "Example build command for your instrumented library:"; \
 		echo "  $(CC) $(FUZZER_FLAGS) -c your_source.c -o your_source.o"; \
 		echo "  ar rcs $(LIBRARY_PATH) your_source.o"; \
+		echo ""; \
+		echo "Note: Both library and sources must use same instrumentation!"; \
 		exit 1; \
 	fi
-	@echo "✓ Library found: $(LIBRARY_PATH)"
-{{/if}}
+{{/unless}}
 
 # Help target
 help:

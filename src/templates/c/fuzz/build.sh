@@ -11,7 +11,7 @@ echo "Building with libFuzzer support..."
 COMPILER="clang"
 FUZZER_FLAGS="-fsanitize=fuzzer,address"
 TARGET_NAME="{{target_name}}-libfuzzer"
-LIBRARY_NAME="libexample-libfuzzer.a"
+LIBRARY_NAME="lib{{project_name}}-libfuzzer.a"
 SOURCES="src/{{target_name}}.c"  # libFuzzer provides its own main
 {{/if}}
 
@@ -21,7 +21,7 @@ echo "Building with AFL support..."
 COMPILER="afl-clang-fast"
 FUZZER_FLAGS="-fsanitize=address"
 TARGET_NAME="{{target_name}}-afl"
-LIBRARY_NAME="libexample-afl.a"
+LIBRARY_NAME="lib{{project_name}}-afl.a"
 SOURCES="driver/main.c src/{{target_name}}.c"
 {{/if}}
 
@@ -31,7 +31,7 @@ echo "Building with HonggFuzz support..."
 COMPILER="hfuzz-clang"
 FUZZER_FLAGS="-fsanitize=address"
 TARGET_NAME="{{target_name}}-honggfuzz"
-LIBRARY_NAME="libexample-honggfuzz.a"
+LIBRARY_NAME="lib{{project_name}}-honggfuzz.a"
 SOURCES="driver/main.c src/{{target_name}}.c"
 {{/if}}
 
@@ -41,7 +41,7 @@ echo "Building standalone fuzzer..."
 COMPILER="clang"
 FUZZER_FLAGS="-fsanitize=address"
 TARGET_NAME="{{target_name}}-standalone"
-LIBRARY_NAME="libexample-fuzz.a"
+LIBRARY_NAME="lib{{project_name}}-fuzz.a"
 SOURCES="driver/main.c src/{{target_name}}.c"
 {{/if}}
 
@@ -49,38 +49,63 @@ SOURCES="driver/main.c src/{{target_name}}.c"
 INCLUDES="-I../include"
 CFLAGS="-g -O1 -Wall -Wextra"
 
-# Check if fuzzing library exists
+# Check if fuzzing library exists, fall back to direct source compilation
+USE_DIRECT_SOURCES=false
 if [ ! -f "../${LIBRARY_NAME}" ]; then
-    echo "Error: Required library ../${LIBRARY_NAME} not found."
-    echo ""
+    echo "⚠️  Library ../${LIBRARY_NAME} not found."
+    
+    # Check if we can compile sources directly
+    if [ -f "../src/lib.c" ] && [ -f "../include/lib.h" ]; then
+        echo "✓ Found source files, will compile directly with same instrumentation"
+        USE_DIRECT_SOURCES=true
+        PROJECT_SOURCES="../src/lib.c"
+        INCLUDES="${INCLUDES} -I../include"
+    else
+        echo "Error: Neither library nor source files found."
+        echo ""
 {{#if (eq integration "make")}}
-    echo "Please run the following in the parent directory first:"
-    echo "  make lib-{{#if (eq default_fuzzer "standalone")}}fuzz{{else}}{{default_fuzzer}}{{/if}}"
+        echo "For full integration, run:"
+        echo "  make lib-{{#if (eq default_fuzzer "standalone")}}fuzz{{else}}{{default_fuzzer}}{{/if}}"
+        echo ""
 {{else}}
-    echo "Please ensure your project builds the fuzzing library: ${LIBRARY_NAME}"
-    echo "This library should be compiled with the same sanitizer flags for"
-    echo "consistent instrumentation."
+        echo "For integration with existing projects:"
+        echo "  1. Build fuzzing library: ${LIBRARY_NAME}"
+        echo "  2. Or place source files in ../src/lib.c and ../include/lib.h"
+        echo ""
 {{/if}}
-    echo ""
-    echo "This ensures consistent sanitizer instrumentation between"
-    echo "your project code and the fuzz harness."
-    exit 1
+        echo "This ensures consistent sanitizer instrumentation."
+        exit 1
+    fi
+else
+    echo "✓ Found required library: ../${LIBRARY_NAME}"
+    PROJECT_SOURCES=""
 fi
-
-echo "✓ Found required library: ../${LIBRARY_NAME}"
 
 # Build the fuzzer
 echo "Compiling ${TARGET_NAME}..."
 
 {{#if (eq default_fuzzer "libfuzzer")}}
 # libFuzzer build
-if ${COMPILER} ${CFLAGS} ${INCLUDES} ${FUZZER_FLAGS} \
-   -DFUZZER_TYPE_LIBFUZZER \
-   ${SOURCES} -L.. -lgps-libfuzzer -o bin/${TARGET_NAME}; then
-    echo "✅ libFuzzer build successful!"
+if [ "$USE_DIRECT_SOURCES" = true ]; then
+    # Compile sources directly
+    if ${COMPILER} ${CFLAGS} ${INCLUDES} ${FUZZER_FLAGS} \
+       -DFUZZER_TYPE_LIBFUZZER \
+       ${SOURCES} ${PROJECT_SOURCES} -o bin/${TARGET_NAME}; then
+        echo "✅ libFuzzer build successful (direct sources)!"
+    else
+        echo "❌ libFuzzer build failed. Make sure clang supports -fsanitize=fuzzer"
+        exit 1
+    fi
 else
-    echo "❌ libFuzzer build failed. Make sure clang supports -fsanitize=fuzzer"
-    exit 1
+    # Link against library
+    if ${COMPILER} ${CFLAGS} ${INCLUDES} ${FUZZER_FLAGS} \
+       -DFUZZER_TYPE_LIBFUZZER \
+       ${SOURCES} -L.. -l{{project_name}}-libfuzzer -o bin/${TARGET_NAME}; then
+        echo "✅ libFuzzer build successful!"
+    else
+        echo "❌ libFuzzer build failed. Make sure clang supports -fsanitize=fuzzer"
+        exit 1
+    fi
 fi
 {{/if}}
 
@@ -98,13 +123,26 @@ else
     exit 1
 fi
 
-if ${COMPILER} ${CFLAGS} ${INCLUDES} ${FUZZER_FLAGS} \
-   -DFUZZER_TYPE_AFL \
-   ${SOURCES} -L.. -lgps-afl -o bin/${TARGET_NAME}; then
-    echo "✅ AFL build successful!"
+if [ "$USE_DIRECT_SOURCES" = true ]; then
+    # Compile sources directly
+    if ${COMPILER} ${CFLAGS} ${INCLUDES} ${FUZZER_FLAGS} \
+       -DFUZZER_TYPE_AFL \
+       ${SOURCES} ${PROJECT_SOURCES} -o bin/${TARGET_NAME}; then
+        echo "✅ AFL build successful (direct sources)!"
+    else
+        echo "❌ AFL build failed"
+        exit 1
+    fi
 else
-    echo "❌ AFL build failed"
-    exit 1
+    # Link against library
+    if ${COMPILER} ${CFLAGS} ${INCLUDES} ${FUZZER_FLAGS} \
+       -DFUZZER_TYPE_AFL \
+       ${SOURCES} -L.. -l{{project_name}}-afl -o bin/${TARGET_NAME}; then
+        echo "✅ AFL build successful!"
+    else
+        echo "❌ AFL build failed"
+        exit 1
+    fi
 fi
 {{/if}}
 
@@ -121,25 +159,51 @@ else
     exit 1
 fi
 
-if ${COMPILER} ${CFLAGS} ${INCLUDES} ${FUZZER_FLAGS} \
-   -DFUZZER_TYPE_HONGGFUZZ \
-   ${SOURCES} -L.. -lgps-honggfuzz -o bin/${TARGET_NAME}; then
-    echo "✅ HonggFuzz build successful!"
+if [ "$USE_DIRECT_SOURCES" = true ]; then
+    # Compile sources directly
+    if ${COMPILER} ${CFLAGS} ${INCLUDES} ${FUZZER_FLAGS} \
+       -DFUZZER_TYPE_HONGGFUZZ \
+       ${SOURCES} ${PROJECT_SOURCES} -o bin/${TARGET_NAME}; then
+        echo "✅ HonggFuzz build successful (direct sources)!"
+    else
+        echo "❌ HonggFuzz build failed"
+        exit 1
+    fi
 else
-    echo "❌ HonggFuzz build failed"
-    exit 1
+    # Link against library
+    if ${COMPILER} ${CFLAGS} ${INCLUDES} ${FUZZER_FLAGS} \
+       -DFUZZER_TYPE_HONGGFUZZ \
+       ${SOURCES} -L.. -l{{project_name}}-honggfuzz -o bin/${TARGET_NAME}; then
+        echo "✅ HonggFuzz build successful!"
+    else
+        echo "❌ HonggFuzz build failed"
+        exit 1
+    fi
 fi
 {{/if}}
 
 {{#if (eq default_fuzzer "standalone")}}
 # Standalone build
-if ${COMPILER} ${CFLAGS} ${INCLUDES} ${FUZZER_FLAGS} \
-   -DFUZZER_TYPE_STANDALONE \
-   ${SOURCES} -L.. -lgps-fuzz -o bin/${TARGET_NAME}; then
-    echo "✅ Standalone build successful!"
+if [ "$USE_DIRECT_SOURCES" = true ]; then
+    # Compile sources directly
+    if ${COMPILER} ${CFLAGS} ${INCLUDES} ${FUZZER_FLAGS} \
+       -DFUZZER_TYPE_STANDALONE \
+       ${SOURCES} ${PROJECT_SOURCES} -o bin/${TARGET_NAME}; then
+        echo "✅ Standalone build successful (direct sources)!"
+    else
+        echo "❌ Standalone build failed"
+        exit 1
+    fi
 else
-    echo "❌ Standalone build failed"
-    exit 1
+    # Link against library
+    if ${COMPILER} ${CFLAGS} ${INCLUDES} ${FUZZER_FLAGS} \
+       -DFUZZER_TYPE_STANDALONE \
+       ${SOURCES} -L.. -l{{project_name}}-fuzz -o bin/${TARGET_NAME}; then
+        echo "✅ Standalone build successful!"
+    else
+        echo "❌ Standalone build failed"
+        exit 1
+    fi
 fi
 {{/if}}
 
