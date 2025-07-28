@@ -8,8 +8,8 @@ advanced_triage: true
 image: $MAYHEM_DOCKER_REGISTRY/forallsecure/debian-buster:latest
 
 cmds:
-  - /fuzz/bin/{{target_name}} @@
-    cwd: /fuzz
+  - /app/build/fuzz/{{target_name}}-{{default_fuzzer}} @@
+    cwd: /app
     ## If this is a network target, uncomment the block below and remove
     ## the @@ input file reference in the cmd (you can either test network or
     ## file inputs, not both).

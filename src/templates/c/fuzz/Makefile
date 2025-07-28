@@ -96,17 +96,37 @@ $(FUZZ_BUILD_DIR):
 $(FUZZ_BUILD_DIR)/$(TARGET): $(SOURCES) | check-library $(FUZZ_BUILD_DIR)
 {{#if (eq default_fuzzer "libfuzzer")}}
 	@echo "Building libFuzzer target..."
+{{#unless minimal}}
 	$(CC) $(CFLAGS) $(INCLUDES) $(FUZZER_FLAGS) \
 		-DFUZZER_TYPE_LIBFUZZER \
 		$(FUZZ_SRC) $(PROJECT_SOURCES) $(PROJECT_OBJS) $(LIBPATH) $(LIBS) -o $@
 {{else}}
+	# Minimal mode: try library first, fall back to standalone
+	$(CC) $(CFLAGS) $(INCLUDES) $(FUZZER_FLAGS) \
+		-DFUZZER_TYPE_LIBFUZZER \
+		$(FUZZ_SRC) $(PROJECT_SOURCES) $(PROJECT_OBJS) $(LIBPATH) $(LIBS) -o $@ 2>/dev/null || \
+	$(CC) $(CFLAGS) $(INCLUDES) $(FUZZER_FLAGS) \
+		-DFUZZER_TYPE_LIBFUZZER \
+		$(SOURCES) -o $@
+{{/unless}}
+{{else}}
 	@echo "Building {{default_fuzzer}} target..."
+{{#unless minimal}}
 	$(CC) $(CFLAGS) $(INCLUDES) $(FUZZER_FLAGS) \
 		-DFUZZER_TYPE_{{default_fuzzer}} \
 		$(SOURCES) $(PROJECT_SOURCES) $(PROJECT_OBJS) $(LIBPATH) $(LIBS) -o $@ 2>/dev/null || \
 	clang $(CFLAGS) $(INCLUDES) $(FUZZER_FLAGS) \
 		-DFUZZER_TYPE_{{default_fuzzer}} \
 		$(SOURCES) $(PROJECT_SOURCES) $(PROJECT_OBJS) $(LIBPATH) $(LIBS) -o $@
+{{else}}
+	# Minimal mode: try library first, fall back to standalone
+	$(CC) $(CFLAGS) $(INCLUDES) $(FUZZER_FLAGS) \
+		-DFUZZER_TYPE_{{default_fuzzer}} \
+		$(SOURCES) $(PROJECT_SOURCES) $(PROJECT_OBJS) $(LIBPATH) $(LIBS) -o $@ 2>/dev/null || \
+	$(CC) $(CFLAGS) $(INCLUDES) $(FUZZER_FLAGS) \
+		-DFUZZER_TYPE_{{default_fuzzer}} \
+		$(SOURCES) -o $@
+{{/unless}}
 {{/if}}
 
 # Run {{default_fuzzer}}
@@ -169,31 +189,32 @@ check-library:
 	fi
 	@echo "✓ Library found: $(LIBRARY_PATH)"
 {{else}}
-	@echo "Minimal mode: Checking for library or source files..."
-	@# Try to find library in common locations
+	@echo "Minimal mode: Using built-in demonstration code"
+	@echo ""
+	@echo "ℹ️  This minimal template includes a simple crash demonstration."
+	@echo "   The fuzzer will quickly find inputs containing 'bug' and crash."
+	@echo ""
+	@echo "🔄 To integrate with your project:"
 	@if [ -f $(LIBRARY_PATH) ]; then \
-		echo "✓ Found library: $(LIBRARY_PATH)"; \
+		echo "✓ Found your library: $(LIBRARY_PATH)"; \
+		echo "   Edit src/{{target_name}}.c to call your library functions"; \
 	elif [ -f "../lib{{project_name}}-$(LIBRARY_SUFFIX).a" ]; then \
-		echo "✓ Found library: ../lib{{project_name}}-$(LIBRARY_SUFFIX).a"; \
+		echo "✓ Found your library: ../lib{{project_name}}-$(LIBRARY_SUFFIX).a"; \
+		echo "   Edit src/{{target_name}}.c to call your library functions"; \
 	elif [ -f "../src/lib.c" ] && [ -f "../include/lib.h" ]; then \
-		echo "✓ Found source files, will compile directly"; \
-		echo "  Sources: ../src/lib.c"; \
-		echo "  Headers: ../include/lib.h"; \
+		echo "✓ Found your source files: ../src/lib.c, ../include/lib.h"; \
+		echo "   Edit src/{{target_name}}.c to call your library functions"; \
 	else \
+		echo "   1. Add your instrumented library to: $(LIBRARY_PATH)"; \
+		echo "   2. OR place source files at: ../src/lib.c and ../include/lib.h"; \
+		echo "   3. Edit src/{{target_name}}.c to replace the demonstration code"; \
 		echo ""; \
-		echo "⚠️  No library or source files found."; \
-		echo ""; \
-		echo "For fuzzing, you need either:"; \
-		echo "  1. Instrumented library: $(LIBRARY_PATH)"; \
-		echo "  2. Source files: ../src/lib.c and ../include/lib.h"; \
-		echo ""; \
-		echo "Example build command for your instrumented library:"; \
-		echo "  $(CC) $(FUZZER_FLAGS) -c your_source.c -o your_source.o"; \
-		echo "  ar rcs $(LIBRARY_PATH) your_source.o"; \
-		echo ""; \
-		echo "Note: Both library and sources must use same instrumentation!"; \
-		exit 1; \
+		echo "   Example library build:"; \
+		echo "     $(CC) $(FUZZER_FLAGS) -c your_source.c -o your_source.o"; \
+		echo "     ar rcs $(LIBRARY_PATH) your_source.o"; \
 	fi
+	@echo ""
+	@echo "📝 Next: Edit src/{{target_name}}.c and replace the TODO section with your code"
 {{/unless}}
 
 # Help target

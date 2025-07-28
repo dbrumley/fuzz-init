@@ -3,15 +3,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-{{#if (eq minimal false)}}
+{{#unless minimal}}
 #include "lib.h"
 {{else}}
-// TODO: Add your project's header files here
+// TODO: Replace this placeholder with your project's header files
 // Example: #include "your_lib.h"
-{{/if}}
+#include <stdio.h>  // For demonstration crash
+{{/unless}}
 
 int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-{{#if (eq minimal false)}}
+{{#unless minimal}}
     // Example: Process the input data through your library function
     // Note: Ensure data is properly null-terminated if your function expects a string
     if (size > 0) {
@@ -24,23 +25,35 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         }
     }
 {{else}}
-    // TODO: Add your fuzzing logic here
-    // This function is called by the fuzzer with test data
-    // 
-    // Example:
-    // - Parse the input data according to your format
-    // - Call your library functions with the parsed data
-    // - Handle any necessary cleanup
+    // ========================================================================
+    // TODO: REPLACE THIS PLACEHOLDER WITH YOUR ACTUAL FUZZING CODE
+    // ========================================================================
     //
-    // Tips:
-    // - The fuzzer will call this function repeatedly with different inputs
-    // - Avoid using global state that persists between calls
-    // - Consider adding bounds checking for size
-    // - Remember to free any allocated memory
+    // This is a simple demonstration that will be found by any fuzzer.
+    // Replace this entire block with calls to your actual library functions.
+    //
+    // Example replacement:
+    //   my_parser_result_t result = my_parse_function(data, size);
+    //   my_process_data(&result);
+    //   my_cleanup(&result);
+    //
+    // The fuzzer will call this function repeatedly with different inputs
+    // to find crashes, memory errors, and other bugs in your code.
+    // ========================================================================
     
-    // Placeholder to prevent unused parameter warnings
-    (void)data;
-    (void)size;
-{{/if}}
+    // Simple demonstration: crash if input contains "bug"
+    if (size >= 3) {
+        for (size_t i = 0; i <= size - 3; i++) {
+            if (data[i] == 'b' && data[i+1] == 'u' && data[i+2] == 'g') {
+                printf("Found the bug! Crashing as demonstration...\n");
+                // This will be caught by AddressSanitizer or cause a crash
+                int* crash = NULL;
+                *crash = 42;  // Intentional crash for demo
+            }
+        }
+    }
+    
+    // TODO: Remove the above demonstration code and add your logic here
+{{/unless}}
     return 0;
 }
