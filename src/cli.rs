@@ -1,5 +1,5 @@
-use crate::types::*;
 use crate::github_fetcher::fetch_github_template;
+use crate::types::*;
 use anyhow;
 use clap::Parser;
 use inquire::{Select, Text};
@@ -7,36 +7,96 @@ use tempfile::TempDir;
 
 #[derive(Parser)]
 #[command(name = "fuzz-init")]
-#[command(about = "Scaffold fuzz harnesses with Mayhem for various languages")]
+#[command(
+    about = "🚀 Scaffold fuzz harnesses using best practices fast",
+    long_about = "🚀 Scaffold fuzz harnesses using best practices fast.\n\n\
+  ✨ Features:\n\
+    - 🛠️ Languages: c, cpp, rust, python, ...\n\
+    - 🧱 Build systems: make, cmake, cargo, ...\n\
+    - 🐛 Fuzzers: libfuzzer, afl, honggfuzz\n\
+    - 📦 Templates: extend with custom templates from GitHub or local files\n\n\
+  📚 Choose between:\n\
+    → Full tutorial project with examples and docs (default)\n\
+    → Minimal fuzz/ folder for integrating into existing codebases\n\n\
+"
+)]
 #[command(version)]
 pub struct Args {
-    /// Positional argument for project name. 
-    #[arg()]
+    #[arg(
+        value_name = "PROJECT_NAME",
+        long_help = "📛 Project name for the generated fuzzing project.\n\
+Used as both the output directory and the default target name.\n\n\
+Examples:\n  - fuzz-init my-project\n  - fuzz-init http-parser"
+    )]
     pub project_name_pos: Option<String>,
 
-    /// Named flag alternative to positional.
-    #[arg(long)]
+    #[arg(
+        long,
+        env = "FUZZ_INIT_PROJECT",
+        value_name = "PROJECT_NAME",
+        long_help = "🏷️ Explicit project name (same as positional PROJECT_NAME).\n\
+Useful when scripting or avoiding positional args.\n\n\
+Example:\n  - fuzz-init --project my-project"
+    )]
     pub project: Option<String>,
-    
-    /// Programming language for the template (c, cpp, python, rust)
-    #[arg(long)]
+
+    #[arg(
+        long,
+        env = "FUZZ_INIT_LANG",
+        value_name = "LANG",
+        long_help = "🧠 Language for the fuzzing template.\n\
+Each template includes language-specific integration and examples.\n\n\
+Examples:\n  - fuzz-init --language c\n  - fuzz-init --language rust"
+    )]
     pub language: Option<String>,
-    
-    /// Build system integration type (standalone, makefile, cmake)
-    #[arg(long)]
+
+    #[arg(
+        long,
+        env = "FUZZ_INIT_INTEGRATION",
+        value_name = "TYPE",
+        long_help = "🔧 Build system integration\n\
+Defines how the fuzzing infrastructure plugs into your build.\n\n\
+Examples:\n  - --integration cmake\n  - --integration make"
+    )]
     pub integration: Option<String>,
-    
-    /// Fuzzer type to use as default (afl, libfuzzer, honggfuzz, standalone)
-    #[arg(long)]
+
+    #[arg(
+        long,
+        env = "FUZZ_INIT_FUZZER",
+        value_name = "FUZZER",
+        long_help = "🐞 Fuzzer engine to configure\n\n\
+All templates use LLVMFuzzerTestOneInput-style harnesses. This flag\ncustomizes the build setup.\n\n\
+Examples:\n  - --fuzzer libfuzzer\n  - --fuzzer afl"
+    )]
     pub fuzzer: Option<String>,
-    
-    /// Template to use (github:org/repo, or @org/repo)
-    #[arg(long)]
+
+    #[arg(
+        long,
+        env = "FUZZ_INIT_TEMPLATE",
+        value_name = "SOURCE",
+        long_help = "🌐 Remote template instead of built-in language templates\n\n\
+Examples:\n  - --template github:forallsecure/c-fuzzing-template\n  - --template @myorg/custom-template"
+    )]
+    #[arg(long, value_name = "SOURCE")]
     pub template: Option<String>,
-    
-    /// Generate minimal template (fuzz directory only) instead of full tutorial
+
+    #[arg(
+        long,
+        env = "FUZZ_INIT_MINIMAL",
+        long_help = "✂️ Generate minimal project (fuzz/ only)\n\n\
+Choose this for drop-in harnesses instead of full examples/tutorials.\n\n\
+Usage:\n  - fuzz-init --minimal"
+    )]
     #[arg(long)]
     pub minimal: bool,
+
+    #[arg(
+        long,
+        hide = false,
+        env = "FUZZ_INIT_GENERATE_DOCS",
+        long_help = "Generate comprehensive CLI documentation in MDX format."
+    )]
+    pub generate_docs: bool,
 }
 
 pub fn get_project_name(args: &Args) -> anyhow::Result<String> {
@@ -46,12 +106,19 @@ pub fn get_project_name(args: &Args) -> anyhow::Result<String> {
     }
 }
 
-pub fn determine_template_source(args: &Args, available_templates: &[String]) -> anyhow::Result<TemplateSource> {
+pub fn determine_template_source(
+    args: &Args,
+    available_templates: &[String],
+) -> anyhow::Result<TemplateSource> {
     match (&args.language, &args.template) {
         // Language specified - use local template
         (Some(language), None) => {
             if !available_templates.contains(language) {
-                anyhow::bail!("Invalid language '{}'. Available: {}", language, available_templates.join(", "));
+                anyhow::bail!(
+                    "Invalid language '{}'. Available: {}",
+                    language,
+                    available_templates.join(", ")
+                );
             }
             Ok(TemplateSource::Local(language.clone()))
         }
@@ -63,9 +130,13 @@ pub fn determine_template_source(args: &Args, available_templates: &[String]) ->
                 Ok(TemplateSource::GitHubFull(template.clone()))
             } else {
                 // Treat as local template name with deprecation warning
-                println!("⚠️  Using --template for local templates is deprecated. Use --language instead.");
+                // println!("⚠️  Using --template for local templates is deprecated. Use --language instead.");
                 if !available_templates.contains(template) {
-                    anyhow::bail!("Invalid template '{}'. Available: {}", template, available_templates.join(", "));
+                    anyhow::bail!(
+                        "Invalid template '{}'. Available: {}",
+                        template,
+                        available_templates.join(", ")
+                    );
                 }
                 Ok(TemplateSource::Local(template.clone()))
             }
@@ -76,18 +147,25 @@ pub fn determine_template_source(args: &Args, available_templates: &[String]) ->
         }
         // Neither specified - prompt user
         (None, None) => {
-            let selected = Select::new("Choose a language", available_templates.to_vec()).prompt()?;
+            let selected =
+                Select::new("Choose a language", available_templates.to_vec()).prompt()?;
             Ok(TemplateSource::Local(selected))
         }
     }
 }
 
-pub async fn get_template_name(template_source: &TemplateSource, available_templates: &[String]) -> anyhow::Result<(String, Option<TempDir>)> {
+pub async fn get_template_name(
+    template_source: &TemplateSource,
+    available_templates: &[String],
+) -> anyhow::Result<(String, Option<TempDir>)> {
     match template_source {
         TemplateSource::Local(name) => {
             if !available_templates.contains(name) {
-                anyhow::bail!("Invalid template name. Available templates: {}", available_templates.join(", "));
-            }
+                anyhow::bail!(
+                    "Invalid template name. Available templates: {}",
+                    available_templates.join(", ")
+                );
+            };
             Ok((name.clone(), None))
         }
         _ => {
@@ -95,7 +173,7 @@ pub async fn get_template_name(template_source: &TemplateSource, available_templ
             // This keeps the existing GitHub template functionality
             let temp_dir = fetch_github_template(template_source).await?;
             let _path = temp_dir.path().to_path_buf();
-            
+
             // For remote templates, we'll use the old filesystem-based approach
             // until we implement embedding for remote templates too
             anyhow::bail!("Remote templates not yet supported with embedded template system. Use local templates only.")
@@ -109,8 +187,11 @@ pub fn select_fuzzer(args: &Args, metadata: Option<&TemplateMetadata>) -> anyhow
         if let Some(metadata) = metadata {
             if let Some(fuzzers) = &metadata.fuzzers {
                 if !fuzzers.supported.contains(fuzzer) {
-                    anyhow::bail!("Fuzzer '{}' not supported by this template. Supported: {}", 
-                                fuzzer, fuzzers.supported.join(", "));
+                    anyhow::bail!(
+                        "Fuzzer '{}' not supported by this template. Supported: {}",
+                        fuzzer,
+                        fuzzers.supported.join(", ")
+                    );
                 }
             }
         }
@@ -124,12 +205,14 @@ pub fn select_fuzzer(args: &Args, metadata: Option<&TemplateMetadata>) -> anyhow
                     Ok(fuzzers.supported[0].clone())
                 } else {
                     // Multiple options, prompt user
-                    let options: Vec<String> = fuzzers.options.iter()
+                    let options: Vec<String> = fuzzers
+                        .options
+                        .iter()
                         .map(|opt| format!("{} - {}", opt.display_name, opt.description))
                         .collect();
                     let selected = Select::new("Choose a fuzzer", options).prompt()?;
                     let fuzzer_name = selected.split(" - ").next().unwrap();
-                    
+
                     // Find the actual fuzzer name from display name
                     for option in &fuzzers.options {
                         if option.display_name == fuzzer_name {
@@ -147,14 +230,20 @@ pub fn select_fuzzer(args: &Args, metadata: Option<&TemplateMetadata>) -> anyhow
     }
 }
 
-pub fn select_integration(args: &Args, metadata: Option<&TemplateMetadata>) -> anyhow::Result<String> {
+pub fn select_integration(
+    args: &Args,
+    metadata: Option<&TemplateMetadata>,
+) -> anyhow::Result<String> {
     if let Some(integration) = &args.integration {
         // Validate integration type against template metadata if available
         if let Some(metadata) = metadata {
             if let Some(integrations) = &metadata.integrations {
                 if !integrations.supported.contains(integration) {
-                    anyhow::bail!("Integration '{}' not supported by this template. Supported: {}", 
-                                integration, integrations.supported.join(", "));
+                    anyhow::bail!(
+                        "Integration '{}' not supported by this template. Supported: {}",
+                        integration,
+                        integrations.supported.join(", ")
+                    );
                 }
             }
         }
@@ -168,10 +257,22 @@ pub fn select_integration(args: &Args, metadata: Option<&TemplateMetadata>) -> a
                     Ok(integrations.supported[0].clone())
                 } else {
                     // Multiple options, prompt user
-                    let options: Vec<String> = integrations.options.iter()
+                    let options: Vec<String> = integrations
+                        .options
+                        .iter()
                         .map(|opt| format!("{} - {}", opt.name, opt.description))
                         .collect();
-                    let selected = Select::new("Choose build system integration", options).prompt()?;
+
+                    // Find the index of the default option
+                    let default_index = integrations
+                        .options
+                        .iter()
+                        .position(|opt| opt.name == integrations.default)
+                        .unwrap_or(0);
+
+                    let selected = Select::new("Choose build system integration", options)
+                        .with_starting_cursor(default_index)
+                        .prompt()?;
                     let integration_name = selected.split(" - ").next().unwrap();
                     Ok(integration_name.to_string())
                 }
@@ -188,80 +289,26 @@ pub fn determine_minimal_mode(args: &Args, _template_source: &TemplateSource) ->
     args.minimal
 }
 
-pub fn print_next_steps(project_name: &str, default_fuzzer: &str, integration_type: &str, minimal_mode: bool, metadata: Option<&TemplateMetadata>) {
+pub fn print_next_steps(project_name: &str, minimal_mode: bool) {
     println!();
     println!("🚀 Next steps:");
     println!("==============");
-    println!("1. cd {}", project_name);
-    
-    match integration_type {
-        "cmake" => {
-            println!("2. mkdir build && cd build");
-            if default_fuzzer == "libfuzzer" {
-                println!("3. CC=clang cmake ..");
-            } else {
-                println!("3. cmake ..");
-            }
-            println!("4. cmake --build . --target fuzz");
-        }
-        "make" => {
-            println!("2. make fuzz             # Build the fuzzer");
-        }
-        "standalone" => {
-            println!("2. cd fuzz && ./build.sh  # Build the fuzzer");
-        }
-        _ => {
-            println!("2. See project documentation for build instructions");
-        }
+    if !minimal_mode {
+        println!("1. cd {}", project_name);
+        println!("2. Read TUTORIAL.md");
+    } else {
+        println!("1. cd {}/fuzz", project_name);
+        println!("2. Read INTEGRATION.md");
     }
-    
-    println!();
-    println!("🔍 Run your fuzzer:");
-    match integration_type {
-        "cmake" => {
-            match default_fuzzer {
-                "libfuzzer" => println!("   cd fuzz/build && ./{}_libfuzzer ../testsuite/", project_name),
-                "afl" => println!("   cd fuzz/build && ./{}_afl ../testsuite/", project_name),
-                "honggfuzz" => println!("   cd fuzz/build && ./{}_honggfuzz ../testsuite/", project_name),
-                _ => println!("   cd fuzz/build && ./{}_{}  ../testsuite/", project_name, default_fuzzer),
-            }
-        }
-        "make" => {
-            println!("   cd fuzz && ./{}-{}  testsuite/", project_name, default_fuzzer);
-        }
-        "standalone" => {
-            println!("   cd fuzz && ./bin/{}  testsuite/", project_name);
-        }
-        _ => {
-            println!("   See project documentation for usage instructions");
-        }
-    }
-    
+
     println!();
     println!("📚 Documentation:");
     if !minimal_mode {
         println!("   • TUTORIAL.md          - Complete fuzzing tutorial and examples");
     }
-    println!("   • fuzz/INTEGRATION.md  - Integration guide for existing projects");
-    println!("   • fuzz/README.md       - Quick reference for fuzzing commands");
-    
-    if let Some(metadata) = metadata {
-        println!();
-        println!("💡 Template info:");
-        println!("   • Language: {}", metadata.template.name);
-        println!("   • Description: {}", metadata.template.description);
-        
-        if let Some(fuzzers) = &metadata.fuzzers {
-            let other_fuzzers: Vec<String> = fuzzers.supported.iter()
-                .filter(|&f| f != default_fuzzer)
-                .cloned()
-                .collect();
-            if !other_fuzzers.is_empty() {
-                println!("   • Other fuzzer types available: {}", other_fuzzers.join(", "));
-            }
-        }
-    }
-    
+    println!("   - fuzz/INTEGRATION.md  - Integration guide for existing projects");
+    println!("   - fuzz/README.md       - Quick reference for fuzzing commands");
+
     println!();
-    println!("Happy fuzzing! 🐛");
+    println!("🐛 Happy fuzzing!");
 }

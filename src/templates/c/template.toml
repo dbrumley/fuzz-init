@@ -1,7 +1,7 @@
 # Template metadata for C fuzzing project
 [template]
-name = "c"
-description = "C/C++ fuzzing project with libFuzzer and AddressSanitizer"
+name = "C"
+description = "C fuzzing"
 version = "1.0.0"
 
 # Template variables with defaults
@@ -44,14 +44,16 @@ supported = ["standalone", "make", "cmake"]
 default = "make"
 
 [[integrations.options]]
+name = "make"
+description = "Makefile-based build system integration"
+files = ["fuzz/Makefile", "fuzz/INTEGRATION.md"]
+
+[[integrations.options]]
 name = "standalone"
 description = "Self-contained fuzzing setup with build script"
 files = ["fuzz/build.sh"]
 
-[[integrations.options]]
-name = "make"
-description = "Makefile-based build system integration"
-files = ["fuzz/Makefile", "fuzz/INTEGRATION.md"]
+
 
 [[integrations.options]]
 name = "cmake"
