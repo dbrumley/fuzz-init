@@ -6,6 +6,32 @@ scaffolding and new fuzz harness, with everything set up for you to run with
 fuzzers like AFL, libfuzzer, HonggFuzz, and Mayhem. You can also create a new skeleton template for a new app that includes
 fuzzing, unit testing, and follows best practices.
 
+## Installation
+
+### From Source
+
+```bash
+# Clone the repository
+git clone https://github.com/your-org/fuzz-init
+cd fuzz-init
+
+# Option 1: Using make
+make install
+
+# Option 2: Using install script
+./install.sh
+
+# Option 3: Manual installation
+cargo build --release
+sudo cp target/release/fuzz-init /usr/local/bin/
+```
+
+### Verify Installation
+
+```bash
+fuzz-init --help
+```
+
 ## Quick Start
 
 To get started, simply run:
@@ -31,6 +57,13 @@ To create a minimal fuzz directory for integration with existing projects:
 
 ```bash
 fuzz-init myapp --language c --minimal --integration make --fuzzer libfuzzer
+```
+
+To create a project from a GitHub template:
+
+```bash
+fuzz-init myapp --template github:user/repo
+fuzz-init myapp --template @user/repo  # shorthand syntax
 ```
 
 ## Testing Your Setup

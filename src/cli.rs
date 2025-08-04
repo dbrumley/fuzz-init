@@ -3,7 +3,7 @@ use crate::types::*;
 use anyhow;
 use clap::Parser;
 use inquire::{Select, Text};
-use tempfile::TempDir;
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "fuzz-init")]
@@ -157,7 +157,7 @@ pub fn determine_template_source(
 pub async fn get_template_name(
     template_source: &TemplateSource,
     available_templates: &[String],
-) -> anyhow::Result<(String, Option<TempDir>)> {
+) -> anyhow::Result<(String, Option<PathBuf>)> {
     match template_source {
         TemplateSource::Local(name) => {
             if !available_templates.contains(name) {
@@ -169,14 +169,15 @@ pub async fn get_template_name(
             Ok((name.clone(), None))
         }
         _ => {
-            // For remote templates, we still need to fetch them to temp directory
-            // This keeps the existing GitHub template functionality
+            // For remote templates, fetch them to temp directory
             let temp_dir = fetch_github_template(template_source).await?;
-            let _path = temp_dir.path().to_path_buf();
-
-            // For remote templates, we'll use the old filesystem-based approach
-            // until we implement embedding for remote templates too
-            anyhow::bail!("Remote templates not yet supported with embedded template system. Use local templates only.")
+            
+            // We need to keep the TempDir alive, so we leak it intentionally
+            // The OS will clean it up when the process exits
+            let path = temp_dir.keep();
+            
+            // Return a generic name and the path to the downloaded template
+            Ok(("remote".to_string(), Some(path)))
         }
     }
 }

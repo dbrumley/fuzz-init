@@ -44,6 +44,17 @@ pub fn setup_handlebars() -> Handlebars<'static> {
     handlebars
 }
 
+pub fn load_template_metadata_from_path(template_path: &Path) -> anyhow::Result<Option<TemplateMetadata>> {
+    let metadata_path = template_path.join("template.toml");
+    if metadata_path.exists() {
+        let content = fs::read_to_string(&metadata_path)?;
+        let metadata: TemplateMetadata = toml::from_str(&content)?;
+        Ok(Some(metadata))
+    } else {
+        Ok(None)
+    }
+}
+
 pub fn process_template_directory(
     template_name: &str,
     output_dir: &Path,
@@ -264,6 +275,111 @@ fn set_executable(path: &Path) -> anyhow::Result<()> {
     {
         // On non-Unix systems, executable permissions are typically not needed
         // Files like .bat, .cmd, .exe are executable by extension
+    }
+    
+    Ok(())
+}
+
+pub fn process_filesystem_template_directory(
+    template_path: &Path,
+    output_dir: &Path,
+    handlebars: &Handlebars,
+    data: &serde_json::Value,
+    metadata: Option<&TemplateMetadata>,
+) -> anyhow::Result<()> {
+    process_filesystem_directory_recursive(template_path, output_dir, handlebars, data, metadata, "")
+}
+
+fn process_filesystem_directory_recursive(
+    template_dir: &Path,
+    output_dir: &Path,
+    handlebars: &Handlebars,
+    data: &serde_json::Value,
+    metadata: Option<&TemplateMetadata>,
+    relative_path: &str,
+) -> anyhow::Result<()> {
+    // Create the output directory
+    fs::create_dir_all(output_dir)?;
+    
+    // Process all entries in the directory
+    for entry in fs::read_dir(template_dir)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        
+        let current_relative_path = if relative_path.is_empty() {
+            file_name.clone()
+        } else {
+            format!("{}/{}", relative_path, file_name)
+        };
+        
+        if file_type.is_dir() {
+            // Check directory inclusion rules
+            if let Some(metadata) = metadata {
+                // Check if this directory should be excluded in minimal mode
+                if data.get("minimal").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    if metadata.file_conventions.full_mode_only.contains(&file_name) {
+                        continue;
+                    }
+                }
+            }
+            
+            // Template the directory name if needed
+            let output_dirname = handlebars.render_template(&file_name, data)?;
+            let output_subdir = output_dir.join(&output_dirname);
+            
+            process_filesystem_directory_recursive(
+                &entry.path(),
+                &output_subdir,
+                handlebars,
+                data,
+                metadata,
+                &current_relative_path
+            )?;
+        } else if file_type.is_file() {
+            // Check if this file should be included based on conditions
+            if should_skip_file(metadata, &current_relative_path, data) {
+                continue;
+            }
+            
+            // Check if this file should be templated
+            let file_config = get_file_config(metadata, &current_relative_path);
+            let should_template = file_config.map_or(true, |fc| fc.template);
+            
+            // Template the filename if needed
+            let output_filename = if should_template {
+                handlebars.render_template(&file_name, data)?
+            } else {
+                file_name.clone()
+            };
+            
+            let output_path = output_dir.join(&output_filename);
+            
+            // Process file content
+            let content = fs::read(&entry.path())?;
+            
+            // Try to process as UTF-8 text
+            if let Ok(text_content) = String::from_utf8(content.clone()) {
+                if should_template {
+                    let rendered = handlebars.render_template(&text_content, data)?;
+                    // Skip empty files (allows Handlebars conditionals to hide entire files)
+                    if rendered.trim().is_empty() {
+                        continue;
+                    }
+                    fs::write(&output_path, rendered)?;
+                } else {
+                    fs::write(&output_path, text_content)?;
+                }
+            } else {
+                // Binary file - write as-is
+                fs::write(&output_path, content)?;
+            }
+            
+            // Set executable permissions if needed
+            if file_config.map_or(false, |fc| fc.executable) {
+                set_executable(&output_path)?;
+            }
+        }
     }
     
     Ok(())

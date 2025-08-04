@@ -6,13 +6,12 @@ use tempfile::TempDir;
 
 pub async fn fetch_github_template(source: &TemplateSource) -> anyhow::Result<TempDir> {
     let (org, repo, path) = match source {
-        TemplateSource::GitHub { org, repo, path } => (org.clone(), repo.clone(), path.clone()),
         TemplateSource::GitHubFull(spec) => {
             if spec.starts_with("github:") {
                 let spec = &spec[7..]; // Remove "github:" prefix
                 let parts: Vec<&str> = spec.split('/').collect();
                 if parts.len() >= 2 {
-                    (parts[0].to_string(), parts[1].to_string(), None)
+                    (parts[0].to_string(), parts[1].to_string(), None::<String>)
                 } else {
                     anyhow::bail!("Invalid GitHub template format: {}", spec);
                 }
@@ -20,7 +19,7 @@ pub async fn fetch_github_template(source: &TemplateSource) -> anyhow::Result<Te
                 let spec = &spec[1..]; // Remove "@" prefix
                 let parts: Vec<&str> = spec.split('/').collect();
                 if parts.len() >= 2 {
-                    (parts[0].to_string(), parts[1].to_string(), None)
+                    (parts[0].to_string(), parts[1].to_string(), None::<String>)
                 } else {
                     anyhow::bail!("Invalid GitHub template format: {}", spec);
                 }

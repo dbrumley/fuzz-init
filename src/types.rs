@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tempfile::TempDir;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FuzzerOption {
@@ -110,9 +109,5 @@ fn default_true() -> bool {
 #[derive(Debug, Clone)]
 pub enum TemplateSource {
     Local(String),
-    GitHub { org: String, repo: String, path: Option<String> },
     GitHubFull(String),
 }
-
-// For remote templates that need temporary directories
-pub type TemplateResult = (String, Option<TempDir>);

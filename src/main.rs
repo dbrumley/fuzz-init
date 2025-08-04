@@ -30,11 +30,15 @@ async fn main() -> anyhow::Result<()> {
     // Get all necessary inputs
     let project_name = get_project_name(&args)?;
     let template_source = determine_template_source(&args, &available_templates)?;
-    let (template_name, _temp_dir) =
+    let (template_name, template_path) =
         get_template_name(&template_source, &available_templates).await?;
 
-    // Load template metadata
-    let metadata = load_template_metadata(&template_name)?;
+    // Load template metadata based on template type
+    let metadata = if let Some(ref path) = template_path {
+        load_template_metadata_from_path(path)?
+    } else {
+        load_template_metadata(&template_name)?
+    };
 
     // Get user selections
     let default_fuzzer = select_fuzzer(&args, metadata.as_ref())?;
@@ -55,13 +59,27 @@ async fn main() -> anyhow::Result<()> {
     // Generate project
     let out_path_string = format!("./{}", project_name);
     let out_path = Path::new(&out_path_string);
-    process_template_directory(
-        &template_name,
-        out_path,
-        &handlebars,
-        &data,
-        metadata.as_ref(),
-    )?;
+    
+    // Process template based on type
+    if let Some(ref path) = template_path {
+        // Remote template - process from filesystem
+        process_filesystem_template_directory(
+            path,
+            out_path,
+            &handlebars,
+            &data,
+            metadata.as_ref(),
+        )?;
+    } else {
+        // Embedded template - process from embedded resources
+        process_template_directory(
+            &template_name,
+            out_path,
+            &handlebars,
+            &data,
+            metadata.as_ref(),
+        )?;
+    }
 
     // Success message with next steps
     println!(
