@@ -17,7 +17,7 @@ pub struct FuzzerConfig {
     pub options: Vec<FuzzerOption>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct IntegrationOption {
     pub name: String,
     pub description: String,

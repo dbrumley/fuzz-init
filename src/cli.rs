@@ -257,30 +257,32 @@ pub fn select_integration(
                     Ok(integrations.supported[0].clone())
                 } else {
                     // Multiple options, prompt user
-                    let options: Vec<String> = integrations
-                        .options
+                    // Ensure default option is listed first
+                    let mut sorted_options = integrations.options.clone();
+                    
+                    // Find the default option and move it to the front if it exists
+                    if let Some(default_pos) = sorted_options.iter().position(|opt| opt.name == integrations.default) {
+                        let default_option = sorted_options.remove(default_pos);
+                        sorted_options.insert(0, default_option);
+                    }
+                    
+                    let options: Vec<String> = sorted_options
                         .iter()
                         .map(|opt| format!("{} - {}", opt.name, opt.description))
                         .collect();
 
-                    // Find the index of the default option
-                    let default_index = integrations
-                        .options
-                        .iter()
-                        .position(|opt| opt.name == integrations.default)
-                        .unwrap_or(0);
-
+                    // Default is now always at index 0
                     let selected = Select::new("Choose build system integration", options)
-                        .with_starting_cursor(default_index)
+                        .with_starting_cursor(0)
                         .prompt()?;
                     let integration_name = selected.split(" - ").next().unwrap();
                     Ok(integration_name.to_string())
                 }
             } else {
-                Ok("make".to_string()) // Default fallback
+                anyhow::bail!("Template does not define any integration options")
             }
         } else {
-            Ok("make".to_string()) // Default fallback
+            anyhow::bail!("Template metadata is missing integration configuration")
         }
     }
 }
