@@ -147,7 +147,8 @@ fn process_embedded_template_directory(
         if let Some(metadata) = metadata {
             // Check if this directory should be excluded in minimal mode
             if data.get("minimal").and_then(|v| v.as_bool()).unwrap_or(false) {
-                if metadata.file_conventions.full_mode_only.contains(&subdir_name.to_string()) {
+                // Only apply full_mode_only exclusions at the template root level
+                if relative_path.is_empty() && metadata.file_conventions.full_mode_only.contains(&subdir_name.to_string()) {
                     continue;
                 }
             }
@@ -199,7 +200,8 @@ fn should_include_by_convention(conventions: &FileConventions, relative_path: &s
     let is_minimal = data.get("minimal").and_then(|v| v.as_bool()).unwrap_or(false);
     if is_minimal {
         for full_only_dir in &conventions.full_mode_only {
-            if relative_path.starts_with(full_only_dir) {
+            // Only exclude if we're at the root level (no parent directories)
+            if relative_path == *full_only_dir {
                 return false;
             }
         }
@@ -318,7 +320,8 @@ fn process_filesystem_directory_recursive(
             if let Some(metadata) = metadata {
                 // Check if this directory should be excluded in minimal mode
                 if data.get("minimal").and_then(|v| v.as_bool()).unwrap_or(false) {
-                    if metadata.file_conventions.full_mode_only.contains(&file_name) {
+                    // Only apply full_mode_only exclusions at the template root level
+                    if relative_path.is_empty() && metadata.file_conventions.full_mode_only.contains(&file_name) {
                         continue;
                     }
                 }
