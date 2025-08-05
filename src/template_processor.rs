@@ -1,27 +1,53 @@
 use crate::types::*;
 use anyhow;
 use handlebars::Handlebars;
-use include_dir::{include_dir, Dir};
 use regex;
 use serde_json;
 use std::{fs, path::Path};
 
-// Embed the templates directory at compile time
+// Conditional template loading based on build mode
+#[cfg(not(debug_assertions))]
+use include_dir::{include_dir, Dir};
+
+#[cfg(not(debug_assertions))]
 static TEMPLATES_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/src/templates");
+
+#[cfg(debug_assertions)]
+static TEMPLATES_PATH: &str = "src/templates";
 
 pub fn get_available_templates() -> anyhow::Result<Vec<String>> {
     let mut templates = Vec::new();
 
-    for entry in TEMPLATES_DIR.dirs() {
-        templates.push(
-            entry
-                .path()
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string(),
-        );
+    #[cfg(not(debug_assertions))]
+    {
+        // Release mode: use embedded templates
+        for entry in TEMPLATES_DIR.dirs() {
+            templates.push(
+                entry
+                    .path()
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+            );
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    {
+        // Debug mode: read from filesystem
+        let templates_path = Path::new(TEMPLATES_PATH);
+        if templates_path.exists() {
+            for entry in fs::read_dir(templates_path)? {
+                let entry = entry?;
+                if entry.file_type()?.is_dir() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        templates.push(name.to_string());
+                    }
+                }
+            }
+        }
     }
 
     templates.sort();
@@ -29,20 +55,42 @@ pub fn get_available_templates() -> anyhow::Result<Vec<String>> {
 }
 
 pub fn load_template_metadata(template_name: &str) -> anyhow::Result<Option<TemplateMetadata>> {
-    if let Some(_template_dir) = TEMPLATES_DIR.get_dir(template_name) {
-        if let Some(metadata_file) =
-            TEMPLATES_DIR.get_file(&format!("{}/template.toml", template_name))
-        {
-            let content = metadata_file
-                .contents_utf8()
-                .ok_or_else(|| anyhow::anyhow!("template.toml is not valid UTF-8"))?;
-            let metadata: TemplateMetadata = toml::from_str(content)?;
+    #[cfg(not(debug_assertions))]
+    {
+        // Release mode: use embedded templates
+        if let Some(_template_dir) = TEMPLATES_DIR.get_dir(template_name) {
+            if let Some(metadata_file) =
+                TEMPLATES_DIR.get_file(&format!("{}/template.toml", template_name))
+            {
+                let content = metadata_file
+                    .contents_utf8()
+                    .ok_or_else(|| anyhow::anyhow!("template.toml is not valid UTF-8"))?;
+                let metadata: TemplateMetadata = toml::from_str(content)?;
+                Ok(Some(metadata))
+            } else {
+                Ok(None)
+            }
+        } else {
+            anyhow::bail!("Template '{}' not found", template_name);
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    {
+        // Debug mode: read from filesystem
+        let template_dir = Path::new(TEMPLATES_PATH).join(template_name);
+        if !template_dir.exists() {
+            anyhow::bail!("Template '{}' not found", template_name);
+        }
+
+        let metadata_path = template_dir.join("template.toml");
+        if metadata_path.exists() {
+            let content = fs::read_to_string(&metadata_path)?;
+            let metadata: TemplateMetadata = toml::from_str(&content)?;
             Ok(Some(metadata))
         } else {
             Ok(None)
         }
-    } else {
-        anyhow::bail!("Template '{}' not found", template_name);
     }
 }
 
@@ -75,20 +123,43 @@ pub fn process_template_directory(
     data: &serde_json::Value,
     metadata: Option<&TemplateMetadata>,
 ) -> anyhow::Result<()> {
-    if let Some(template_dir) = TEMPLATES_DIR.get_dir(template_name) {
-        process_embedded_template_directory(
-            template_dir,
+    #[cfg(not(debug_assertions))]
+    {
+        // Release mode: use embedded templates
+        if let Some(template_dir) = TEMPLATES_DIR.get_dir(template_name) {
+            process_embedded_template_directory(
+                template_dir,
+                output_dir,
+                handlebars,
+                data,
+                metadata,
+                "",
+            )
+        } else {
+            anyhow::bail!("Template '{}' not found", template_name);
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    {
+        // Debug mode: use filesystem templates
+        let template_dir = Path::new(TEMPLATES_PATH).join(template_name);
+        if !template_dir.exists() {
+            anyhow::bail!("Template '{}' not found", template_name);
+        }
+
+        process_filesystem_directory_recursive(
+            &template_dir,
             output_dir,
             handlebars,
             data,
             metadata,
             "",
         )
-    } else {
-        anyhow::bail!("Template '{}' not found", template_name);
     }
 }
 
+#[cfg(not(debug_assertions))]
 fn process_embedded_template_directory(
     template_dir: &include_dir::Dir,
     output_dir: &Path,

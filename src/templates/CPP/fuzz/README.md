@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project uses universal fuzzing design - write once, fuzz everywhere! The same
+🚀 **TEMPLATE UPDATED!** This project uses universal fuzzing design - write once, fuzz everywhere! The same
 `LLVMFuzzerTestOneInput()` function works with AFL, libFuzzer, HonggFuzz, and
 standalone testing.
 

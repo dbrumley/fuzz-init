@@ -24,9 +24,13 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     // Example: Process the input data through your library function
     // Note: Ensure data is properly null-terminated if your function expects a string
     if (size > 0) {
-        std::string input(reinterpret_cast<const char*>(data), size);
+        // Create a mutable copy for the C library function (which expects char*)
+        std::unique_ptr<char[]> input_copy(new char[size + 1]);
+        std::memcpy(input_copy.get(), data, size);
+        input_copy[size] = '\0';  // Null-terminate
+        
         try {
-            process(input);
+            process(input_copy.get());
         } catch (const std::exception& e) {
             // Exceptions are handled by libFuzzer - they're treated as interesting inputs
             // but not crashes (unless AddressSanitizer detects memory errors)

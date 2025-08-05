@@ -2,6 +2,51 @@
 # This CMakeLists.txt is optimized for your chosen fuzzer and integration
 
 cmake_minimum_required(VERSION 3.16)
+
+{{#if (eq default_fuzzer "libfuzzer")}}
+# libFuzzer requires clang - auto-detect if not specified
+if(NOT DEFINED CMAKE_C_COMPILER)
+    find_program(CLANG_C clang
+        DOC "Clang C compiler for libFuzzer")
+    if(CLANG_C)
+        set(CMAKE_C_COMPILER ${CLANG_C})
+        message(STATUS "Auto-detected clang for libFuzzer: ${CLANG_C}")
+    else()
+        message(FATAL_ERROR "libFuzzer requires clang. Please install clang or set CMAKE_C_COMPILER=clang")
+    endif()
+endif()
+{{/if}}
+
+{{#if (eq default_fuzzer "afl")}}
+# AFL configuration - find best available AFL++ C compiler
+if(NOT DEFINED CMAKE_C_COMPILER)
+    find_program(AFL_C_COMPILER 
+        NAMES afl-clang-fast afl-clang afl-gcc
+        DOC "AFL++ C compiler wrapper")
+    if(AFL_C_COMPILER)
+        set(CMAKE_C_COMPILER ${AFL_C_COMPILER})
+        message(STATUS "Auto-detected AFL compiler: ${AFL_C_COMPILER}")
+    else()
+        message(FATAL_ERROR "AFL fuzzing requires AFL++. Please install AFL++ or set CMAKE_C_COMPILER=afl-clang-fast")
+    endif()
+endif()
+{{/if}}
+
+{{#if (eq default_fuzzer "honggfuzz")}}
+# HonggFuzz configuration - find best available HonggFuzz compiler
+if(NOT DEFINED CMAKE_C_COMPILER)
+    find_program(HFUZZ_C_COMPILER 
+        NAMES hfuzz-clang clang
+        DOC "HonggFuzz C compiler")
+    if(HFUZZ_C_COMPILER)
+        set(CMAKE_C_COMPILER ${HFUZZ_C_COMPILER})
+        message(STATUS "Auto-detected HonggFuzz compiler: ${HFUZZ_C_COMPILER}")
+    else()
+        message(FATAL_ERROR "HonggFuzz requires clang. Please install HonggFuzz or clang")
+    endif()
+endif()
+{{/if}}
+
 project({{project_name}}-fuzz-{{default_fuzzer}})
 
 # Set C standard
@@ -14,9 +59,9 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 {{#if (eq default_fuzzer "libfuzzer")}}
-# libFuzzer requires clang
-if(NOT CMAKE_C_COMPILER MATCHES "clang")
-    message(FATAL_ERROR "libFuzzer requires clang compiler. Please set CMAKE_C_COMPILER to clang.")
+# Verify libFuzzer compiler was detected correctly
+if(NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    message(FATAL_ERROR "libFuzzer requires clang, but got ${CMAKE_C_COMPILER_ID} compiler: ${CMAKE_C_COMPILER}")
 endif()
 
 # libFuzzer configuration
@@ -31,13 +76,9 @@ set(FUZZ_SOURCES "src/{{target_name}}.c")
 {{/if}}
 
 {{#if (eq default_fuzzer "afl")}}
-# AFL configuration - try to find afl-clang-fast
-find_program(AFL_CLANG_FAST afl-clang-fast)
-if(AFL_CLANG_FAST)
-    set(CMAKE_C_COMPILER ${AFL_CLANG_FAST})
-    message(STATUS "Using afl-clang-fast for AFL fuzzing")
-else()
-    message(FATAL_ERROR "AFL fuzzing requires afl-clang-fast. Please install AFL++ or set CMAKE_C_COMPILER manually.")
+# Verify AFL compiler was detected correctly
+if(NOT CMAKE_C_COMPILER_ID MATCHES "AFL|Clang")
+    message(FATAL_ERROR "AFL requires AFL++ or clang, but got ${CMAKE_C_COMPILER_ID} compiler: ${CMAKE_C_COMPILER}")
 endif()
 
 set(FUZZER_NAME "AFL++")
@@ -51,16 +92,9 @@ set(FUZZ_SOURCES "src/{{target_name}}.c" "driver/main.c")
 {{/if}}
 
 {{#if (eq default_fuzzer "honggfuzz")}}
-# HonggFuzz configuration - try to find hfuzz-clang
-find_program(HFUZZ_CLANG hfuzz-clang)
-if(HFUZZ_CLANG)
-    set(CMAKE_C_COMPILER ${HFUZZ_CLANG})
-    message(STATUS "Using hfuzz-clang for HonggFuzz fuzzing")
-else()
-    message(WARNING "hfuzz-clang not found, using regular clang. Install HonggFuzz for optimal performance.")
-    if(NOT CMAKE_C_COMPILER MATCHES "clang")
-        message(FATAL_ERROR "HonggFuzz requires clang compiler when hfuzz-clang is not available.")
-    endif()
+# Verify HonggFuzz compiler was detected correctly
+if(NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    message(FATAL_ERROR "HonggFuzz requires clang, but got ${CMAKE_C_COMPILER_ID} compiler: ${CMAKE_C_COMPILER}")
 endif()
 
 set(FUZZER_NAME "HonggFuzz")
@@ -100,23 +134,59 @@ include_directories(../include)
 # For CMake integration, intelligently detect existing targets
 set(LIBRARY_TARGET_FOUND FALSE)
 
-# First, check if the project name matches a target
-if(TARGET {{project_name}})
-    set(REQUIRED_LIBRARY_TARGET "{{project_name}}")
+# Helper function to validate target type (libraries only)
+function(is_library_target target_name result_var)
+    if(TARGET ${target_name})
+        get_target_property(target_type ${target_name} TYPE)
+        if(target_type STREQUAL "STATIC_LIBRARY" OR target_type STREQUAL "SHARED_LIBRARY")
+            set(${result_var} TRUE PARENT_SCOPE)
+        else()
+            set(${result_var} FALSE PARENT_SCOPE)
+        endif()
+    else()
+        set(${result_var} FALSE PARENT_SCOPE)
+    endif()
+endfunction()
+
+# Priority 1: Check for fuzzer-specific library (ideal for full mode)
+set(FUZZER_SPECIFIC_TARGET "{{project_name}}-{{default_fuzzer}}")
+is_library_target(${FUZZER_SPECIFIC_TARGET} IS_FUZZER_LIB)
+if(IS_FUZZER_LIB)
+    set(REQUIRED_LIBRARY_TARGET "${FUZZER_SPECIFIC_TARGET}")
     set(LIBRARY_TARGET_FOUND TRUE)
-    message(STATUS "✓ Found project target: ${REQUIRED_LIBRARY_TARGET}")
-# Check common library naming patterns
+    message(STATUS "✓ Found fuzzer-specific library: ${REQUIRED_LIBRARY_TARGET}")
+
+# Priority 2: Check for general library naming patterns (libraries only)
 elseif(TARGET {{project_name}}_lib)
-    set(REQUIRED_LIBRARY_TARGET "{{project_name}}_lib")
-    set(LIBRARY_TARGET_FOUND TRUE)
-    message(STATUS "✓ Found library target: ${REQUIRED_LIBRARY_TARGET}")
+    is_library_target("{{project_name}}_lib" IS_LIB)
+    if(IS_LIB)
+        set(REQUIRED_LIBRARY_TARGET "{{project_name}}_lib")
+        set(LIBRARY_TARGET_FOUND TRUE)
+        message(STATUS "✓ Found library target: ${REQUIRED_LIBRARY_TARGET}")
+    endif()
 elseif(TARGET lib{{project_name}})
-    set(REQUIRED_LIBRARY_TARGET "lib{{project_name}}")
-    set(LIBRARY_TARGET_FOUND TRUE)
-    message(STATUS "✓ Found library target: ${REQUIRED_LIBRARY_TARGET}")
-# Check if there's a single library target we can use
-else()
-    # Get all targets and filter for libraries
+    is_library_target("lib{{project_name}}" IS_LIB)
+    if(IS_LIB)
+        set(REQUIRED_LIBRARY_TARGET "lib{{project_name}}")
+        set(LIBRARY_TARGET_FOUND TRUE)
+        message(STATUS "✓ Found library target: ${REQUIRED_LIBRARY_TARGET}")
+    endif()
+
+# Priority 3: Check project name (but only if it's a library, not executable)
+elseif(TARGET {{project_name}})
+    is_library_target("{{project_name}}" IS_LIB)
+    if(IS_LIB)
+        set(REQUIRED_LIBRARY_TARGET "{{project_name}}")
+        set(LIBRARY_TARGET_FOUND TRUE)
+        message(STATUS "✓ Found project library: ${REQUIRED_LIBRARY_TARGET}")
+    else()
+        message(STATUS "Found {{project_name}} but it's not a library (skipping)")
+    endif()
+endif()
+
+# Priority 4: Auto-detect from available libraries
+if(NOT LIBRARY_TARGET_FOUND)
+    # Get all targets and filter for libraries only
     get_property(all_targets DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY BUILDSYSTEM_TARGETS)
     set(library_targets)
     foreach(target ${all_targets})
@@ -133,8 +203,22 @@ else()
         set(LIBRARY_TARGET_FOUND TRUE)
         message(STATUS "✓ Auto-detected library target: ${REQUIRED_LIBRARY_TARGET}")
     elseif(num_libraries GREATER 1)
-        message(WARNING "Multiple library targets found: ${library_targets}")
-        message(FATAL_ERROR "Please specify which library to fuzz by editing REQUIRED_LIBRARY_TARGET in this CMakeLists.txt")
+        message(STATUS "Multiple library targets found: ${library_targets}")
+        # Try to pick the best one (fuzzer-specific or main library)
+        foreach(lib_target ${library_targets})
+            if(lib_target MATCHES ".*-{{default_fuzzer}}$")
+                set(REQUIRED_LIBRARY_TARGET "${lib_target}")
+                set(LIBRARY_TARGET_FOUND TRUE)
+                message(STATUS "✓ Selected fuzzer-specific library: ${REQUIRED_LIBRARY_TARGET}")
+                break()
+            endif()
+        endforeach()
+        if(NOT LIBRARY_TARGET_FOUND)
+            list(GET library_targets 0 REQUIRED_LIBRARY_TARGET)
+            set(LIBRARY_TARGET_FOUND TRUE)
+            message(STATUS "✓ Selected first library target: ${REQUIRED_LIBRARY_TARGET}")
+            message(STATUS "Other available libraries: ${library_targets}")
+        endif()
     endif()
 endif()
 

@@ -1,7 +1,56 @@
-cmake_minimum_required(VERSION 3.10)
-project({{project_name}} C)
+cmake_minimum_required(VERSION 3.16)
+
+{{#if (eq default_fuzzer "libfuzzer")}}
+# libFuzzer requires clang++ - auto-detect if not specified for C++ part
+if(NOT DEFINED CMAKE_CXX_COMPILER)
+    find_program(CLANG_CXX clang++
+        DOC "Clang C++ compiler for libFuzzer")
+    if(CLANG_CXX)
+        set(CMAKE_CXX_COMPILER ${CLANG_CXX})
+        message(STATUS "Auto-detected clang++ for libFuzzer: ${CLANG_CXX}")
+    else()
+        message(FATAL_ERROR "libFuzzer requires clang++. Please install clang or set CMAKE_CXX_COMPILER=clang++")
+    endif()
+endif()
+
+# For consistent AddressSanitizer, also use matching clang for C
+if(NOT DEFINED CMAKE_C_COMPILER AND CMAKE_CXX_COMPILER MATCHES "clang\\+\\+")
+    string(REGEX REPLACE "clang\\+\\+$" "clang" CLANG_C_COMPILER ${CMAKE_CXX_COMPILER})
+    if(EXISTS ${CLANG_C_COMPILER})
+        set(CMAKE_C_COMPILER ${CLANG_C_COMPILER})
+        message(STATUS "Using matching clang for C: ${CLANG_C_COMPILER}")
+    endif()
+endif()
+{{/if}}
+
+{{#if (eq default_fuzzer "afl")}}
+# AFL configuration - find best available AFL++ compilers
+if(NOT DEFINED CMAKE_CXX_COMPILER)
+    find_program(AFL_CXX_COMPILER 
+        NAMES afl-clang-fast++ afl-clang++ afl-g++
+        DOC "AFL++ C++ compiler wrapper")
+    if(AFL_CXX_COMPILER)
+        set(CMAKE_CXX_COMPILER ${AFL_CXX_COMPILER})
+        message(STATUS "Auto-detected AFL C++ compiler: ${AFL_CXX_COMPILER}")
+    else()
+        message(FATAL_ERROR "AFL fuzzing requires AFL++. Please install AFL++ or set CMAKE_CXX_COMPILER=afl-clang-fast++")
+    endif()
+endif()
+
+# Use matching AFL C compiler
+if(NOT DEFINED CMAKE_C_COMPILER AND CMAKE_CXX_COMPILER MATCHES "afl-")
+    string(REGEX REPLACE "\\+\\+$" "" AFL_C_COMPILER ${CMAKE_CXX_COMPILER})
+    if(EXISTS ${AFL_C_COMPILER})
+        set(CMAKE_C_COMPILER ${AFL_C_COMPILER})
+        message(STATUS "Using matching AFL C compiler: ${AFL_C_COMPILER}")
+    endif()
+endif()
+{{/if}}
+
+project({{project_name}} C CXX)
 
 set(CMAKE_C_STANDARD 99)
+set(CMAKE_CXX_STANDARD 11)
 
 # Compiler flags
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -g")

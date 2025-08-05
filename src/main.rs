@@ -3,6 +3,7 @@ use serde_json::json;
 use std::path::Path;
 
 mod cli;
+mod dev_mode;
 mod github_fetcher;
 mod template_processor;
 mod types;
@@ -19,6 +20,11 @@ async fn main() -> anyhow::Result<()> {
     if args.generate_docs {
         generate_cli_documentation();
         return Ok(());
+    }
+
+    // Check if dev mode was requested
+    if args.dev_mode {
+        return dev_mode::run_dev_mode(&args).await;
     }
 
     // Get available templates

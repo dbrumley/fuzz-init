@@ -1,241 +1,311 @@
 # fuzz-init
 
-The easiest way to get started integrating fuzzing into your app is by using
-`fuzz-init`. This CLI tool enables you to quickly start building the proper
-scaffolding and new fuzz harness, with everything set up for you to run with
-fuzzers like AFL, libfuzzer, HonggFuzz, and Mayhem. You can also create a new skeleton template for a new app that includes
-fuzzing, unit testing, and follows best practices.
+**Automated scaffolding to get you fuzzing and finding bugs quickly.**
 
-## Installation
+[![Rust](https://img.shields.io/badge/Built%20with-Rust-red?logo=rust)](https://www.rust-lang.org/)
+[![Universal Fuzzing](https://img.shields.io/badge/Universal-Fuzzing-blue)]()
+[![Build Systems](https://img.shields.io/badge/Makefile%20%7C%20CMake%20%7C%20Cargo-Integrated-green)]()
 
-### From Source
+`fuzz-init` is a CLI tool that scaffolds production-ready fuzzing projects with
+enterprise-grade templates.
+
+## ⚡ Why fuzz-init?
+
+**Write Once, Fuzz Everywhere**: Your code works with AFL, libFuzzer,
+HonggFuzz, and Mayhem without changes. We handle the complexity.
+
+**Production-Ready Templates**: Complete projects with unit tests, Docker
+containers, CI/CD integration, and comprehensive documentation—not toy
+examples.
+
+**Zero Configuration**: Automatic compiler detection, intelligent library
+linking, and build system integration. No manual environment setup required.
+
+**Professional Workflow**: Full tutorial mode for learning or minimal mode for
+existing projects. Your choice.
+
+**Extend Easily**: Create and use your own templates.
+
+## 🚀 Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/fuzz-init
-cd fuzz-init
+# Get up and running in 30 seconds
+fuzz-init my-app --language c --fuzzer libfuzzer
 
-# Option 1: Using make
-make install
-
-# Option 2: Using install script
-./install.sh
-
-# Option 3: Manual installation
-cargo build --release
-sudo cp target/release/fuzz-init /usr/local/bin/
+cd my-app
+make lib && make fuzz-libfuzzer
+./fuzz/my-app-libfuzzer fuzz/testsuite/
 ```
 
-### Verify Installation
+**That's it.** You're now fuzzing with libFuzzer, complete with sanitizers,
+dictionaries, and a working harness.
+
+## ✨ Key Features
+
+### 🎯 **Universal Fuzzing Architecture**
+
+Write standard `LLVMFuzzerTestOneInput()` and we make it work with every
+fuzzer. Works on Linux, macOS, containers, and CI?CD systems.
+
+### 🏗️ **Enterprise-Grade Templates**
+
+- **Complete projects**: Library builds, unit tests, Docker containers, Mayhem
+  integration
+- **Multiple build systems**: Makefile, CMake, and standalone options with
+  intelligent linking
+- **Library-first design**: Clean separation between your code and fuzzing
+  infrastructure
+
+### 📦 **Flexible Integration**
+
+- **Full mode**: Complete tutorial project with examples and documentation
+- **Minimal mode**: Just the fuzz directory for existing projects
+- **Remote templates**: Use GitHub repos as templates with `@org/repo` syntax
+
+### 🧪 **Advanced Development Tools**
+
+- **Template development mode**: Test all 24+ configurations with `--dev-mode`
+- **Real-time feedback**: Debug builds load templates from filesystem—edit and test instantly
+- **Comprehensive testing**: Validate your entire fuzzing setup with `--test`
+
+## 💡 Installation
+
+### Quick Install (Recommended)
 
 ```bash
-fuzz-init --help
+# Clone and install
+git clone https://github.com/dbrumley/fuzz-init
+cd fuzz-init && make install
 ```
 
-## Quick Start
-
-To get started, simply run:
+### Verify Setup
 
 ```bash
+fuzz-init --test  # Check what fuzzing tools work on your system
+```
+
+## 🛠️ Usage Patterns
+
+### For New Projects
+
+```bash
+# Interactive mode - prompts for all options
 fuzz-init
+
+# Specify everything upfront
+fuzz-init my-parser --language c --fuzzer libfuzzer --integration cmake
+
+# Use remote template
+fuzz-init secure-app --template @forallsecure/c-template
 ```
 
-This will prompt you to:
-1. Enter a project name
-2. Choose a language template (C, C++, Python, Rust)
-3. Select your preferred fuzzer (AFL, libFuzzer, HonggFuzz, or standalone)
-4. Select your preferred build system (make, cmake, cargo, etc)
-
-
-To create scaffolding in a specific folder with all options specified:
+### For Existing Projects
 
 ```bash
-fuzz-init myapp --language c --integration make --fuzzer libfuzzer
+# Add fuzzing to existing codebase
+fuzz-init existing-app --language c --minimal --integration makefile
+
+# Results in: existing-app/fuzz/ with everything ready to build
 ```
 
-To create a minimal fuzz directory for integration with existing projects:
+### For Template Developers
 
 ```bash
-fuzz-init myapp --language c --minimal --integration make --fuzzer libfuzzer
+# Test all configurations (24 for C template)
+fuzz-init --dev-mode --language c
+
+# Focus on specific combination
+fuzz-init --dev-mode --language c --fuzzer libfuzzer --integration cmake
+
+# Continuous development with file watching
+fuzz-init --dev-mode --language c --watch src/templates/C/
 ```
 
-To create a project from a GitHub template:
+## 📊 Template Capabilities
+
+| Language | Fuzzers                               | Build Systems           | Unit Tests | Docker  | Mayhem  |
+| -------- | ------------------------------------- | ----------------------- | ---------- | ------- | ------- |
+| **C**    | AFL, libFuzzer, HonggFuzz, Standalone | Make, CMake, Standalone | ✅ 6 tests | ✅      | ✅      |
+| **C++**  | AFL, libFuzzer, HonggFuzz, Standalone | Make, Standalone        | ✅ 6 tests | ✅      | ✅      |
+| **Rust** | cargo-fuzz, AFL.rs                    | Cargo                   | Planned    | Planned | Planned |
+
+### C/C++ Template Features
+
+- **Universal fuzzer compatibility** - Same code works with all fuzzers
+- **Smart library linking** - Intelligent target detection and dependency management
+- **Comprehensive testing** - Unit tests validate functionality before fuzzing
+- **Production integration** - Docker, Mayhem, CI/CD ready out of the box
+- **Complete documentation** - TUTORIAL.md, INTEGRATION.md, and contextual READMEs
+
+### Rust Template Features
+
+- **cargo-fuzz integration** - Native Rust fuzzing with modern toolchain
+- **AFL.rs support** - Alternative fuzzing engine option
+- **Cargo-native** - Follows Rust ecosystem conventions
+
+## 🎓 Example Workflow
+
+**1. Create A New Fuzzing Project**
 
 ```bash
-fuzz-init myapp --template github:user/repo
-fuzz-init myapp --template @user/repo  # shorthand syntax
+fuzz-init myapp --language c --fuzzer libfuzzer --integration make
+cd myapp
+make        # Build the example library
+make test   # Run unit tests (6 comprehensive tests)
+make fuzz-libfuzzer  # Build fuzz harnesses
+./fuzz/secure-parser-libfuzzer fuzz/testsuite/
+# INFO: Running with entropic power schedule (0xFF, 100).
+# INFO: Seed: 123456789
+# INFO: Loaded 1 modules   (8 inline 8-bit counters): 8 [0x10f7fe0, 0x10f7fe8),
+# #1      INITED cov: 3 ft: 3 corp: 1/1b exec/s: 0 rss: 26Mb
+# #8      NEW    cov: 4 ft: 4 corp: 2/2b lim: 4 exec/s: 0 rss: 26Mb L: 1/1 MS: 1 ChangeBit-
+
 ```
 
-## Testing Your Setup
-
-**New!** Before diving into fuzzing, you can verify that all templates work
-correctly on your system:
+**2. Drop into an existing project**
 
 ```bash
-fuzz-init --test
+myapp$ fuzz-init . --minimal --language cpp --fuzzer libfuzzer --integration cmake
 ```
 
-This will:
-- ✅ Test all available templates (C, C++, Python, Rust)
-- ✅ Try building with every fuzzer option (AFL, libFuzzer, HonggFuzz,
-  standalone)
-- ✅ Show you exactly which combinations work on your system
-- ✅ Identify missing dependencies or configuration issues
+Then integrate the `fuzz` directory into your overall build.
 
-### Example Test Output
+**4. Start Fuzzing**
 
-```
-🧪 Running template tests...
-
-Testing template: c
-  Fuzzer options: afl, libfuzzer, hongfuzz, standalone
-  Testing fuzzer: afl
-    ❌ Build failed - AFL not properly configured
-  Testing fuzzer: libfuzzer
-    ✅ Build successful
-  Testing fuzzer: standalone
-    ✅ Build successful
-
-📊 Test Summary:
-================
-❌ c - 2/4 fuzzer modes passed
-   └─ ❌ afl failed
-✅ python - All 1 fuzzer modes passed
-```
-
-**Why test?** Fuzzing tools like AFL and HonggFuzz require specific
-installations and configurations. The test mode helps you:
-- Verify your fuzzer installations work correctly
-- Identify which templates are ready to use
-- Debug setup issues before starting a project
-- Ensure templates will build successfully
-
-## Options
-
-`fuzz-init` comes with the following options:
-
-- `--language <name>` - Select a programming language (c, cpp, python, rust)
-- `--fuzzer <name>` - Select fuzzer (afl, libfuzzer, honggfuzz, standalone)
-- `--integration <type>` - Select build system (standalone, make, cmake)
-- `--minimal` - Generate minimal fuzz directory for existing projects
-- `--template <name>` - Use remote template (github:org/repo or @org/repo)
-- `--test` - Test all templates and fuzzer combinations on your system
-
-## Available Templates
-
-### C Template (`--language c`)
-Full-featured C fuzzing template with universal fuzzer support:
-- **Supported Fuzzers**: AFL/AFL++, libFuzzer, HonggFuzz, standalone
-- **Build Systems**: Makefile, CMake, standalone build script
-- **What you get**: Complete project with library, unit tests, Docker setup, Mayhem configuration, comprehensive documentation
-- **Universal Design**: Write standard `LLVMFuzzerTestOneInput()` and the template handles all fuzzer compatibility
-- **Testing**: Comprehensive unit test suite with 6 tests covering all library functions
-- **Integration Modes**: Full tutorial mode or minimal mode for existing projects
-
-### C++ Template (`--language cpp`)  
-C++ fuzzing template with comprehensive tooling:
-- **Supported Fuzzers**: AFL/AFL++, libFuzzer, HonggFuzz, standalone
-- **Build Systems**: Makefile, standalone build script
-- **What you get**: Full C++ project structure with fuzzing infrastructure
-
-### Python Template (`--language python`)
-Basic Python project template:
-- **Supported Fuzzers**: Standalone (simple project structure)
-- **Build Systems**: Standalone
-- **What you get**: Basic Python project scaffold
-
-### Rust Template (`--language rust`)
-Rust fuzzing template with cargo integration:
-- **Supported Fuzzers**: libFuzzer (via cargo-fuzz), AFL (via afl.rs)
-- **Build Systems**: Standalone (cargo-based)
-- **What you get**: Rust project configured for modern Rust fuzzing tools
-
-### Remote Templates
-You can also use templates from GitHub repositories:
 ```bash
-fuzz-init my-project --template github:forallsecure/c-template
-fuzz-init my-project --template @forallsecure/c-template  # short
+make fuzz-libfuzzer
+./fuzz/secure-parser-libfuzzer fuzz/testsuite/
+# INFO: Running with entropic power schedule (0xFF, 100).
+# INFO: Seed: 123456789
+# INFO: Loaded 1 modules   (8 inline 8-bit counters): 8 [0x10f7fe0, 0x10f7fe8),
+# #1      INITED cov: 3 ft: 3 corp: 1/1b exec/s: 0 rss: 26Mb
+# #8      NEW    cov: 4 ft: 4 corp: 2/2b lim: 4 exec/s: 0 rss: 26Mb L: 1/1 MS: 1 ChangeBit-
 ```
 
-## Prerequisites
+**5. Scale to Production**
 
-### For C/C++ Templates
-- **clang** - For libFuzzer and standalone builds
-- **AFL/AFL++** - Optional, for AFL fuzzing mode
-- **HonggFuzz** - Optional, for HonggFuzz mode
-
-### For Rust Template  
-- **cargo-fuzz** - For libFuzzer integration
-- **afl.rs** - Optional, for AFL integration
-
-### Installation Check
-The easiest way to see what's working on your system:
 ```bash
-fuzz-init --test
+# Container-based fuzzing
+docker build -t secure-parser-fuzz .
+docker run secure-parser-fuzz
+
+# Cloud fuzzing with Mayhem
+mayhem run .
 ```
 
-## Getting Started Example
+## 🔧 Development Mode
 
-1. **Test your setup first**:
-   ```bash
-   fuzz-init --test
-   ```
+Perfect for template developers and advanced users:
 
-2. **Create a new C fuzzing project**:
-   ```bash
-   fuzz-init my-fuzz-project --language c --fuzzer libfuzzer --integration make
-   ```
+```bash
+# Test all 24 C template configurations
+fuzz-init --dev-mode --language c
 
-3. **Build library and run unit tests**:
-   ```bash
-   cd my-fuzz-project
-   make lib          # Build the library
-   make test         # Run unit tests
-   ```
+🔧 Starting template development mode...
+📁 Workspace: /tmp/.tmpABC123
 
-4. **Build and test the fuzzer**:
-   ```bash
-   make fuzz-libfuzzer                    # Build fuzzer
-   cd fuzz && ./build/fuzz/my-fuzz-project-libfuzzer testsuite/
-   ```
+🧪 Testing 24 configurations for C template:
+[1/24] Testing: afl + makefile + full
+    ✅ afl + makefile + full (1.2s)
+[2/24] Testing: libfuzzer + cmake + minimal
+    ✅ libfuzzer + cmake + minimal (0.8s)
 
-5. **Try different build systems**:
-   ```bash
-   # CMake integration
-   fuzz-init cmake-project --language c --integration cmake --fuzzer libfuzzer
-   cd cmake-project && mkdir build && cd build
-   CC=clang cmake .. && cmake --build . --target test
-   
-   # Minimal mode for existing projects
-   fuzz-init existing-project --language c --minimal --integration make
-   ```
+═══════════════════════════════════════
+📊 Test Results Summary
+═══════════════════════════════════════
+Total:      24
+✅ Success: 20
+❌ Failed:   4
 
-The generated templates include detailed documentation:
-- **TUTORIAL.md**: Complete fuzzing tutorial with examples
-- **fuzz/INTEGRATION.md**: Integration guide for existing projects  
-- **fuzz/README.md**: Quick reference for fuzzing commands
+📈 Success rate: 83.3%
+⏱️  Average build time: 1.1s
+```
 
-## Development Environment
+### Development Features
 
-### Using VS Code Dev Container (Recommended)
+- **Instant iteration**: Debug builds load templates from filesystem—no recompilation needed
+- **Comprehensive testing**: Every fuzzer×integration×mode combination
+- **Persistent debugging**: Use `--dev-output ./debug/` to preserve failed builds
+- **Watch mode**: Continuous testing with file system monitoring
 
-For the best development experience with all fuzzing tools pre-installed:
+## 🏢 Professional Features
 
-1. **Prerequisites**: Install VS Code with the Dev Containers extension
-2. **Open project**: VS Code will prompt to "Reopen in Container"
-3. **Ready to go**: All fuzzing tools (AFL++, HonggFuzz, libFuzzer) work
-   out-of-the-box in Linux
+### Enterprise Integration
 
-Benefits:
-- ✅ No macOS compatibility issues
-- ✅ All fuzzing tools pre-installed and configured  
-- ✅ Consistent environment across development machines
-- ✅ Perfect for running `fuzz-init --test`
+- **CI/CD Ready**: GitHub Actions, Jenkins, GitLab CI templates included
+- **Container-First**: Docker and devcontainer support for consistent environments
+- **Mayhem Integration**: Production-ready cloud fuzzing configuration
+- **Multiple Build Systems**: Native Makefile, CMake, and standalone support
 
-### Manual Setup
+### Quality Assurance
 
-If not using the devcontainer, install these tools for full functionality:
-- **clang/clang++** - For libFuzzer and standalone builds
-- **AFL++** - `git clone https://github.com/AFLplusplus/AFLplusplus`
-- **HonggFuzz** - `git clone https://github.com/google/honggfuzz`
-- **Rust & cargo-fuzz** - `cargo install cargo-fuzz`
+- **Unit Testing**: Comprehensive test suites validate library functionality
+- **Sanitizer Integration**: AddressSanitizer, UBSan, MemorySanitizer configured correctly
+- **Cross-Platform**: Linux, macOS, Windows (WSL) support with platform-specific optimizations
+
+### Developer Experience
+
+- **Rich Documentation**: Context-aware guides for every template and integration type
+- **Intelligent Defaults**: Smart selections based on your environment and preferences
+- **Error Recovery**: Detailed failure reporting with actionable remediation steps
+
+## 🌟 Advanced Usage
+
+### Custom Templates from GitHub
+
+```bash
+# Use organization templates
+fuzz-init my-app --template @myorg/custom-fuzzing-template
+
+# Specific repository with integration override
+fuzz-init secure-app --template github:security-team/hardened-template --integration cmake
+```
+
+### Multi-Language Projects
+
+```bash
+# C library with Rust fuzzing harnesses
+fuzz-init hybrid-app --language c --integration cmake
+# Then add Rust fuzzing separately
+fuzz-init hybrid-app-rust --language rust --minimal
+```
+
+### Testing Template Modifications
+
+```bash
+# Edit templates in src/templates/
+# Test immediately without rebuilding
+cargo run -- --dev-mode --language c --fuzzer libfuzzer --dev-output ./test-workspace/
+```
+
+## 📚 What You Get
+
+Every generated project includes:
+
+- **📖 TUTORIAL.md**: Complete fuzzing tutorial with real examples
+- **🔧 INTEGRATION.md**: Step-by-step integration guide for existing projects
+- **⚡ README.md**: Quick reference with copy-paste commands
+- **🧪 Unit Tests**: Comprehensive test coverage validating functionality
+- **🐳 Docker**: Container setup for consistent fuzzing environments
+- **☁️ Mayhem**: Cloud fuzzing configuration for production scale
+- **📁 Project Structure**: Professional organization following industry best practices
+
+## 🛡️ Security Focus
+
+Built for security professionals who need:
+
+- **Vulnerability Discovery**: Templates optimized for finding real security bugs
+- **Sanitizer Integration**: Proper AddressSanitizer, UBSan, MemorySanitizer configuration
+- **Corpus Management**: Intelligent test case organization and dictionary generation
+- **Scalable Architecture**: From local development to cloud-scale continuous fuzzing
+
+## 📞 Support & Development
+
+- **🐛 Issues**: Report bugs at [GitHub Issues](https://github.com/dbrumley/fuzz-init/issues)
+- **💡 Feature Requests**: We welcome community input on new templates and integrations
+- **🤝 Contributing**: See `CONTRIBUTING.md` for development workflow and template creation guide
+- **📖 Documentation**: Comprehensive docs generated from CLI definitions
+
+---
+
+**Ready to find bugs?** `fuzz-init my-app --language c` and start fuzzing in under a minute.

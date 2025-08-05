@@ -5,6 +5,18 @@ use clap::Parser;
 use inquire::{Select, Text};
 use std::path::PathBuf;
 
+/// Find a template name case-insensitively and return the actual template name
+fn find_template_case_insensitive(
+    input_name: &str,
+    available_templates: &[String],
+) -> Option<String> {
+    available_templates
+        .iter()
+        .find(|template| template.to_lowercase() == input_name.to_lowercase())
+        .cloned()
+}
+
+
 #[derive(Parser)]
 #[command(name = "fuzz-init")]
 #[command(
@@ -97,6 +109,45 @@ Usage:\n  - fuzz-init --minimal"
         long_help = "Generate comprehensive CLI documentation in MDX format."
     )]
     pub generate_docs: bool,
+
+    #[arg(
+        long,
+        env = "FUZZ_INIT_DEV_MODE",
+        long_help = "🔧 Template development mode with multi-config testing and validation\n\n\
+Runs comprehensive testing of template configurations:\n\
+  - Tests all fuzzer×integration×mode combinations\n\
+  - Shows detailed build results and error reporting\n\
+  - Uses temporary directories for isolated testing\n\n\
+Examples:\n\
+  - fuzz-init --dev-mode --language C\n\
+  - fuzz-init --dev-mode --language C --watch src/templates/C/"
+    )]
+    pub dev_mode: bool,
+
+    #[arg(
+        long,
+        env = "FUZZ_INIT_WATCH",
+        value_name = "PATH",
+        long_help = "👀 Watch template directory for changes and auto-rebuild\n\n\
+Monitors template files and re-runs validation when changes detected.\n\
+Must be used with --dev-mode.\n\n\
+Examples:\n\
+  - --watch src/templates/C/\n\
+  - --watch /path/to/custom/template/"
+    )]
+    pub watch: Option<String>,
+
+    #[arg(
+        long,
+        env = "FUZZ_INIT_DEV_OUTPUT",
+        value_name = "DIR",
+        long_help = "📁 Custom output directory for development testing\n\n\
+By default, uses temporary directories that are auto-cleaned.\n\
+Specify this to use a persistent location for debugging.\n\n\
+Example:\n\
+  - --dev-output ./template-testing/"
+    )]
+    pub dev_output: Option<String>,
 }
 
 pub fn get_project_name(args: &Args) -> anyhow::Result<String> {
@@ -123,14 +174,15 @@ pub fn determine_template_source(
     match (&args.language, &args.template) {
         // Language specified - use local template
         (Some(language), None) => {
-            if !available_templates.contains(language) {
+            if let Some(actual_template_name) = find_template_case_insensitive(language, available_templates) {
+                Ok(TemplateSource::Local(actual_template_name))
+            } else {
                 anyhow::bail!(
                     "Invalid language '{}'. Available: {}",
                     language,
                     available_templates.join(", ")
                 );
             }
-            Ok(TemplateSource::Local(language.clone()))
         }
         // Template specified - use remote template
         (None, Some(template)) => {
@@ -141,14 +193,15 @@ pub fn determine_template_source(
             } else {
                 // Treat as local template name with deprecation warning
                 // println!("⚠️  Using --template for local templates is deprecated. Use --language instead.");
-                if !available_templates.contains(template) {
+                if let Some(actual_template_name) = find_template_case_insensitive(template, available_templates) {
+                    Ok(TemplateSource::Local(actual_template_name))
+                } else {
                     anyhow::bail!(
                         "Invalid template '{}'. Available: {}",
                         template,
                         available_templates.join(", ")
                     );
                 }
-                Ok(TemplateSource::Local(template.clone()))
             }
         }
         // Both specified - error
@@ -171,14 +224,15 @@ pub fn determine_template_source_with_tracking(
     match (&args.language, &args.template) {
         // Language specified - use local template
         (Some(language), None) => {
-            if !available_templates.contains(language) {
+            if let Some(actual_template_name) = find_template_case_insensitive(language, available_templates) {
+                Ok((TemplateSource::Local(actual_template_name), false))
+            } else {
                 anyhow::bail!(
                     "Invalid language '{}'. Available: {}",
                     language,
                     available_templates.join(", ")
                 );
             }
-            Ok((TemplateSource::Local(language.clone()), false))
         }
         // Template specified - use remote template
         (None, Some(template)) => {
@@ -187,14 +241,15 @@ pub fn determine_template_source_with_tracking(
             } else if template.starts_with('@') {
                 Ok((TemplateSource::GitHubFull(template.clone()), false))
             } else {
-                if !available_templates.contains(template) {
+                if let Some(actual_template_name) = find_template_case_insensitive(template, available_templates) {
+                    Ok((TemplateSource::Local(actual_template_name), false))
+                } else {
                     anyhow::bail!(
                         "Invalid template '{}'. Available: {}",
                         template,
                         available_templates.join(", ")
                     );
                 }
-                Ok((TemplateSource::Local(template.clone()), false))
             }
         }
         // Both specified - error
