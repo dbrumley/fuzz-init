@@ -1,6 +1,15 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Tracks which values were provided via prompts vs. command-line flags
+#[derive(Debug, Default)]
+pub struct PromptedValues {
+    pub project_name: bool,
+    pub language: bool,
+    pub fuzzer: bool,
+    pub integration: bool,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FuzzerOption {
     pub name: String,

@@ -27,9 +27,16 @@ async fn main() -> anyhow::Result<()> {
         anyhow::bail!("No embedded templates found.");
     }
 
+    // Track which values came from prompts for hint generation
+    let mut prompted_values = types::PromptedValues::default();
+
     // Get all necessary inputs
-    let project_name = get_project_name(&args)?;
-    let template_source = determine_template_source(&args, &available_templates)?;
+    let (project_name, prompted_project) = get_project_name_with_tracking(&args)?;
+    prompted_values.project_name = prompted_project;
+    
+    let (template_source, prompted_language) = determine_template_source_with_tracking(&args, &available_templates)?;
+    prompted_values.language = prompted_language;
+    
     let (template_name, template_path) =
         get_template_name(&template_source, &available_templates).await?;
 
@@ -41,24 +48,43 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Get user selections
-    let default_fuzzer = select_fuzzer(&args, metadata.as_ref())?;
-    let integration_type = select_integration(&args, metadata.as_ref())?;
+    let (default_fuzzer, prompted_fuzzer) = select_fuzzer_with_tracking(&args, metadata.as_ref())?;
+    prompted_values.fuzzer = prompted_fuzzer;
+    
+    let (integration_type, prompted_integration) = select_integration_with_tracking(&args, metadata.as_ref())?;
+    prompted_values.integration = prompted_integration;
+    
     let minimal_mode = determine_minimal_mode(&args, &template_source);
 
     // Setup Handlebars with helpers
     let handlebars = setup_handlebars();
 
+    // Extract base name for filenames (remove path components)
+    let project_basename = Path::new(&project_name)
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
     let data = json!({
         "project_name": project_name,
-        "target_name": project_name, // Use project name as target name by default
+        "target_name": project_basename, // Use base name only for template filenames
         "default_fuzzer": default_fuzzer,
         "integration": integration_type,
         "minimal": minimal_mode
     });
 
-    // Generate project
-    let out_path_string = format!("./{}", project_name);
-    let out_path = Path::new(&out_path_string);
+    // Generate project - handle nested paths properly
+    let out_path = Path::new(&project_name);
+    
+    // Create parent directories if they don't exist
+    if let Some(parent) = out_path.parent() {
+        if !parent.as_os_str().is_empty() && parent != Path::new(".") {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                anyhow::anyhow!("Failed to create parent directories for '{}': {}", project_name, e)
+            })?;
+        }
+    }
     
     // Process template based on type
     if let Some(ref path) = template_path {
@@ -87,7 +113,7 @@ async fn main() -> anyhow::Result<()> {
         project_name, template_name
     );
 
-    print_next_steps(&project_name, minimal_mode);
+    print_next_steps(&project_name, minimal_mode, &prompted_values, &template_source, &default_fuzzer, &integration_type);
 
     Ok(())
 }

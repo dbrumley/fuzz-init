@@ -1,7 +1,7 @@
-# Template metadata for C fuzzing project
+# Template metadata for C++ fuzzing project
 [template]
-name = "C"
-description = "C fuzzing"
+name = "CPP"
+description = "C++ fuzzing"
 version = "1.0.0"
 
 # Template variables with defaults
@@ -69,7 +69,7 @@ always_include = ["fuzz"]
 full_mode_only = ["src", "include", "test", "test_data"]
 
 # File extensions that should be templated
-template_extensions = [".c", ".h", ".md", ".sh", ".toml", ".txt"]
+template_extensions = [".cpp", ".hpp", ".c", ".h", ".md", ".sh", ".toml", ".txt"]
 
 # File extensions that should be executable  
 executable_extensions = [".sh"]

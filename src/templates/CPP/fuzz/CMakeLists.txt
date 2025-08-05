@@ -4,9 +4,9 @@
 cmake_minimum_required(VERSION 3.16)
 project({{project_name}}-fuzz-{{default_fuzzer}})
 
-# Set C standard
-set(CMAKE_C_STANDARD 99)
-set(CMAKE_C_STANDARD_REQUIRED ON)
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Set default build type to Debug for fuzzing
 if(NOT CMAKE_BUILD_TYPE)
@@ -15,8 +15,8 @@ endif()
 
 {{#if (eq default_fuzzer "libfuzzer")}}
 # libFuzzer requires clang
-if(NOT CMAKE_C_COMPILER MATCHES "clang")
-    message(FATAL_ERROR "libFuzzer requires clang compiler. Please set CMAKE_C_COMPILER to clang.")
+if(NOT CMAKE_CXX_COMPILER MATCHES "clang++")
+    message(FATAL_ERROR "libFuzzer requires clang compiler. Please set CMAKE_CXX_COMPILER to clang++.")
 endif()
 
 # libFuzzer configuration
@@ -27,7 +27,7 @@ set(LIBRARY_NAME "{{project_name}}-libfuzzer")
 set(FUZZER_DEFINE "DFUZZER_TYPE_LIBFUZZER")
 
 # libFuzzer doesn't need driver (provides its own main)
-set(FUZZ_SOURCES "src/{{target_name}}.c")
+set(FUZZ_SOURCES "src/{{target_name}}.cpp")
 {{/if}}
 
 {{#if (eq default_fuzzer "afl")}}
@@ -47,7 +47,7 @@ set(LIBRARY_NAME "{{project_name}}-afl")
 set(FUZZER_DEFINE "DFUZZER_TYPE_AFL")
 
 # AFL needs the universal driver
-set(FUZZ_SOURCES "src/{{target_name}}.c" "driver/main.c")
+set(FUZZ_SOURCES "src/{{target_name}}.cpp" "driver/main.c")
 {{/if}}
 
 {{#if (eq default_fuzzer "honggfuzz")}}
@@ -70,7 +70,7 @@ set(LIBRARY_NAME "{{project_name}}-honggfuzz")
 set(FUZZER_DEFINE "DFUZZER_TYPE_HONGGFUZZ")
 
 # HonggFuzz needs the universal driver
-set(FUZZ_SOURCES "src/{{target_name}}.c" "driver/main.c")
+set(FUZZ_SOURCES "src/{{target_name}}.cpp" "driver/main.c")
 {{/if}}
 
 {{#if (eq default_fuzzer "standalone")}}
@@ -86,7 +86,7 @@ set(LIBRARY_NAME "{{project_name}}-fuzz")
 set(FUZZER_DEFINE "DFUZZER_TYPE_STANDALONE")
 
 # Standalone needs the universal driver
-set(FUZZ_SOURCES "src/{{target_name}}.c" "driver/main.c")
+set(FUZZ_SOURCES "src/{{target_name}}.cpp" "driver/main.c")
 {{/if}}
 
 # Common compiler flags optimized for fuzzing
