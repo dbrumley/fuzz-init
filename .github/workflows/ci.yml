@@ -13,9 +13,6 @@ jobs:
   # Build and test the fuzz-init tool itself
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        rust: [stable, 1.70]
 
     steps:
       - uses: actions/checkout@v4
@@ -23,7 +20,7 @@ jobs:
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: ${{ matrix.rust }}
+          toolchain: stable
           override: true
 
       - name: Cache dependencies
