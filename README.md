@@ -76,16 +76,23 @@ A new project includes rules for building:
 - **HonggFuzz**: Alternative fuzzing engine with different trade-offs
 - **Standalone**: Binary targets for manual fuzzing or integration
 
-**Example:** If you are using `make` or `cmake`, then:
+**Example:** Using `cmake` with clang, you'd do:
 
+```bash
+fuzz-init myapp --language C --integration cmake
+cd myapp
+cmake -S . -B build
+cmake --build build
 ```
-make afl        # build for fuzzing with AFL/AFL++ and Mayhem.
-make libfuzzer  # build for fuzzing with libfuzzer and Mayhem.
-make standalone # build a binary-only target, works with Mayhem.
-make fuzz       # Builds all the above. Gracefully skips any targets
-                # where you don't have the pre-requisite tools
-                # (e.g., clang++, afl-clang) installed with a warning.
-```
+
+This will create three stand-alone binary programs:
+
+- `build/fuzz/myapp-afl`: An instrumented binary designed to work with AFL
+  built from `fuzz`
+- `build/fuzz/myapp-libfuzzer`: An instrumented libfuzzer binary built from `fuzz`
+- `build/fuzz/myapp-standalone`: An uninstrumented, stand-alone binary built
+  from `fuzz`
+- `build/myapp-app`: The overall app built from the top-level.
 
 ## Usage
 
