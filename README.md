@@ -3,6 +3,8 @@
 A CLI tool for scaffolding fuzzing projects that addresses common developer pain points.
 
 [![Rust](https://img.shields.io/badge/Built%20with-Rust-red?logo=rust)](https://www.rust-lang.org/)
+[![CI](https://github.com/dbrumley/fuzz-init/workflows/CI/badge.svg)](https://github.com/dbrumley/fuzz-init/actions)
+[![Quick Test](https://github.com/dbrumley/fuzz-init/workflows/Quick%20Test/badge.svg)](https://github.com/dbrumley/fuzz-init/actions)
 
 ## Common Fuzzing Problems
 

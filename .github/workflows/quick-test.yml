@@ -1,0 +1,69 @@
+name: Quick Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quick-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang llvm-dev
+
+      - name: Build fuzz-init
+        run: cargo build --release
+
+      - name: Test C template with dev-mode
+        run: |
+          echo "Testing C template with dev-mode..."
+          ./target/release/fuzz-init --dev-mode --language C --dev-output ./test-c
+
+          # Check that projects were generated
+          echo "Checking generated projects..."
+          find ./test-c -type d -name "*" | head -10
+
+          # Check that fuzz directories exist
+          find ./test-c -name "fuzz" -type d
+
+      - name: Test minimal mode
+        run: |
+          echo "Testing minimal mode..."
+          ./target/release/fuzz-init test-minimal --language C --minimal --dev-output ./test-minimal
+
+          # Check minimal mode structure
+          ls -la ./test-minimal/
+          if [ -d "./test-minimal/fuzz" ]; then
+            echo "✓ Minimal mode created fuzz directory"
+            ls -la ./test-minimal/fuzz/
+          else
+            echo "✗ Minimal mode missing fuzz directory"
+            exit 1
+          fi
+
+      - name: Test CLI help
+        run: |
+          ./target/release/fuzz-init --help
+          ./target/release/fuzz-init --generate-docs > /dev/null
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: quick-test-results
+          path: |
+            test-c/
+            test-minimal/
