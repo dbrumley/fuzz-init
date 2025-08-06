@@ -6,7 +6,7 @@ A CLI tool for scaffolding fuzzing projects that addresses common developer pain
 [![CI](https://github.com/dbrumley/fuzz-init/workflows/CI/badge.svg)](https://github.com/dbrumley/fuzz-init/actions)
 [![Quick Test](https://github.com/dbrumley/fuzz-init/workflows/Quick%20Test/badge.svg)](https://github.com/dbrumley/fuzz-init/actions)
 
-[![Star History Chart](https://api.star-history.com/svg?repos=dbrumley/fuzz-init&type=Date)](https://star-history.com/#dbrumley/fuzz-init&Date)
+**Ready to start fuzzing?** `fuzz-init my-app --language c` and begin in under a minute.
 
 ## Common Fuzzing Problems
 
@@ -18,15 +18,17 @@ Setting up fuzzing infrastructure often involves:
 - **Project structure**: Organizing code to separate application logic from fuzzing harnesses
 - **Integration overhead**: Adding fuzzing to existing projects without breaking existing builds
 - **Documentation gaps**: Missing or outdated guides for different fuzzer/build combinations
+- **Onboarding gaps**: Bringing new developers up to speed on how fuzzing works
 
 ## How fuzz-init Works
 
 fuzz-init generates projects using a **universal fuzzing architecture**:
 
 1. **Standard interface**: Uses `LLVMFuzzerTestOneInput` which works with all major fuzzers
-2. **Template system**: Embedded templates for C, C++, Rust, Python with configurable build systems
+2. **Template system**: Embedded templates for C, C++, Rust, and more with configurable build systems
 3. **Conditional generation**: Templates adapt based on your choices (fuzzer, build system, minimal/full mode)
 4. **Build system integration**: Generates appropriate Makefiles, CMakeLists.txt, or standalone scripts
+5. **Drop-in or tutorial-based**: Generate just fuzz templates, or a full tutorial in your favorite language.
 
 This approach means you write your fuzzing logic once, and it works with AFL, libFuzzer, HonggFuzz, and other fuzzers without code changes.
 
@@ -150,6 +152,25 @@ fuzz-init --dev-mode --language c
 - Identifies missing dependencies
 
 ## Installation
+
+### From GitHub Releases (Recommended)
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/dbrumley/fuzz-init/releases):
+
+```bash
+# Linux
+wget https://github.com/dbrumley/fuzz-init/releases/latest/download/fuzz-init-linux-x64
+chmod +x fuzz-init-linux-x64
+./fuzz-init-linux-x64 --help
+
+# macOS
+wget https://github.com/dbrumley/fuzz-init/releases/latest/download/fuzz-init-macos-x64
+chmod +x fuzz-init-macos-x64
+./fuzz-init-macos-x64 --help
+
+# Windows
+# Download fuzz-init-windows-x64.exe from the releases page
+```
 
 ### From Source
 
@@ -311,4 +332,4 @@ Every generated project includes:
 
 ---
 
-**Ready to start fuzzing?** `fuzz-init my-app --language c` and begin in under a minute.
+[![Star History Chart](https://api.star-history.com/svg?repos=dbrumley/fuzz-init&type=Date)](https://star-history.com/#dbrumley/fuzz-init&Date)

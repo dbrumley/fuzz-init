@@ -1,0 +1,181 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*" # Trigger on version tags like v1.0.0, v2.1.3, etc.
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Build fuzz-init for multiple platforms
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: fuzz-init-linux-x64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: fuzz-init-macos-x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: fuzz-init-windows-x64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          target: ${{ matrix.target }}
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build fuzz-init
+        run: |
+          cargo build --release --target ${{ matrix.target }}
+
+          # Copy the binary to a standard location
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp target/${{ matrix.target }}/release/fuzz-init.exe ${{ matrix.artifact_name }}
+          else
+            cp target/${{ matrix.target }}/release/fuzz-init ${{ matrix.artifact_name }}
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}
+
+  # Test the release build
+  test-release:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang llvm-dev
+
+      - name: Build fuzz-init
+        run: cargo build --release
+
+      - name: Test release functionality
+        run: |
+          echo "Testing release build..."
+          ./target/release/fuzz-init --help
+          ./target/release/fuzz-init --generate-docs > /dev/null
+
+          echo "Testing template generation..."
+          ./target/release/fuzz-init test-release --language C --minimal --dev-output ./test-release
+
+          echo "Verifying generated project..."
+          ls -la ./test-release/
+          if [ -d "./test-release/fuzz" ]; then
+            echo "✓ Release build works correctly"
+          else
+            echo "✗ Release build failed"
+            exit 1
+          fi
+
+  # Create GitHub release
+  create-release:
+    runs-on: ubuntu-latest
+    needs: [build, test-release]
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Extract version from tag
+        run: |
+          # Extract version from tag (e.g., v1.0.0 -> 1.0.0)
+          VERSION=${GITHUB_REF#refs/tags/}
+          VERSION=${VERSION#v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "TAG_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Generate release notes
+        run: |
+          # Generate basic release notes
+          cat > RELEASE_NOTES.md << EOF
+          # fuzz-init $VERSION
+
+          ## What's New
+
+          This release includes:
+          - Bug fixes and improvements
+          - Enhanced template generation
+          - Better error handling
+
+          ## Installation
+
+          Download the appropriate binary for your platform:
+
+          - **Linux**: \`fuzz-init-linux-x64\`
+          - **macOS**: \`fuzz-init-macos-x64\`
+          - **Windows**: \`fuzz-init-windows-x64.exe\`
+
+          ## Usage
+
+          \`\`\`bash
+          # Make executable (Linux/macOS)
+          chmod +x fuzz-init-linux-x64
+
+          # Run
+          ./fuzz-init-linux-x64 --help
+          \`\`\`
+
+          ## Changes
+
+          See the [changelog](https://github.com/dbrumley/fuzz-init/blob/main/CHANGELOG.md) for detailed changes.
+          EOF
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_VERSION }}
+          name: fuzz-init ${{ env.VERSION }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: false
+          files: |
+            fuzz-init-linux-x64
+            fuzz-init-macos-x64
+            fuzz-init-windows-x64.exe
+
+      - name: Update version in Cargo.toml
+        run: |
+          # Update version in Cargo.toml for next development cycle
+          # This is optional - you might prefer to do this manually
+          echo "Release ${{ env.VERSION }} completed successfully!"
+          echo "Remember to update Cargo.toml version for next development cycle"

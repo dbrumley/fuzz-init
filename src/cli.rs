@@ -16,7 +16,6 @@ fn find_template_case_insensitive(
         .cloned()
 }
 
-
 #[derive(Parser)]
 #[command(name = "fuzz-init")]
 #[command(
@@ -150,8 +149,6 @@ Example:\n\
     pub dev_output: Option<String>,
 }
 
-
-
 pub fn get_project_name_with_tracking(args: &Args) -> anyhow::Result<(String, bool)> {
     match args.project.as_ref().or(args.project_name_pos.as_ref()) {
         Some(name) => Ok((name.clone(), false)), // false = not prompted
@@ -162,8 +159,6 @@ pub fn get_project_name_with_tracking(args: &Args) -> anyhow::Result<(String, bo
     }
 }
 
-
-
 pub fn determine_template_source_with_tracking(
     args: &Args,
     available_templates: &[String],
@@ -171,7 +166,9 @@ pub fn determine_template_source_with_tracking(
     match (&args.language, &args.template) {
         // Language specified - use local template
         (Some(language), None) => {
-            if let Some(actual_template_name) = find_template_case_insensitive(language, available_templates) {
+            if let Some(actual_template_name) =
+                find_template_case_insensitive(language, available_templates)
+            {
                 Ok((TemplateSource::Local(actual_template_name), false))
             } else {
                 anyhow::bail!(
@@ -188,7 +185,9 @@ pub fn determine_template_source_with_tracking(
             } else if template.starts_with('@') {
                 Ok((TemplateSource::GitHubFull(template.clone()), false))
             } else {
-                if let Some(actual_template_name) = find_template_case_insensitive(template, available_templates) {
+                if let Some(actual_template_name) =
+                    find_template_case_insensitive(template, available_templates)
+                {
                     Ok((TemplateSource::Local(actual_template_name), false))
                 } else {
                     anyhow::bail!(
@@ -229,20 +228,21 @@ pub async fn get_template_name(
         _ => {
             // For remote templates, fetch them to temp directory
             let temp_dir = fetch_github_template(template_source).await?;
-            
+
             // We need to keep the TempDir alive, so we leak it intentionally
             // The OS will clean it up when the process exits
             let path = temp_dir.keep();
-            
+
             // Return a generic name and the path to the downloaded template
             Ok(("remote".to_string(), Some(path)))
         }
     }
 }
 
-
-
-pub fn select_fuzzer_with_tracking(args: &Args, metadata: Option<&TemplateMetadata>) -> anyhow::Result<(String, bool)> {
+pub fn select_fuzzer_with_tracking(
+    args: &Args,
+    metadata: Option<&TemplateMetadata>,
+) -> anyhow::Result<(String, bool)> {
     if let Some(fuzzer) = &args.fuzzer {
         // Validate fuzzer type against template metadata if available
         if let Some(metadata) = metadata {
@@ -291,8 +291,6 @@ pub fn select_fuzzer_with_tracking(args: &Args, metadata: Option<&TemplateMetada
     }
 }
 
-
-
 pub fn select_integration_with_tracking(
     args: &Args,
     metadata: Option<&TemplateMetadata>,
@@ -322,13 +320,16 @@ pub fn select_integration_with_tracking(
                     // Multiple options, prompt user
                     // Ensure default option is listed first
                     let mut sorted_options = integrations.options.clone();
-                    
+
                     // Find the default option and move it to the front if it exists
-                    if let Some(default_pos) = sorted_options.iter().position(|opt| opt.name == integrations.default) {
+                    if let Some(default_pos) = sorted_options
+                        .iter()
+                        .position(|opt| opt.name == integrations.default)
+                    {
                         let default_option = sorted_options.remove(default_pos);
                         sorted_options.insert(0, default_option);
                     }
-                    
+
                     let options: Vec<String> = sorted_options
                         .iter()
                         .map(|opt| format!("{} - {}", opt.name, opt.description))
@@ -355,12 +356,12 @@ pub fn determine_minimal_mode(args: &Args, _template_source: &TemplateSource) ->
 }
 
 pub fn print_next_steps(
-    project_name: &str, 
-    minimal_mode: bool, 
-    prompted_values: &crate::types::PromptedValues, 
-    template_source: &TemplateSource, 
+    project_name: &str,
+    minimal_mode: bool,
+    prompted_values: &crate::types::PromptedValues,
+    template_source: &TemplateSource,
     fuzzer: &str,
-    integration: &str
+    integration: &str,
 ) {
     println!();
     println!("🚀 Next steps:");
@@ -382,31 +383,35 @@ pub fn print_next_steps(
     println!("   - fuzz/README.md       - Quick reference for fuzzing commands");
 
     // Generate CLI hint if any values were prompted
-    if prompted_values.project_name || prompted_values.language || prompted_values.fuzzer || prompted_values.integration {
+    if prompted_values.project_name
+        || prompted_values.language
+        || prompted_values.fuzzer
+        || prompted_values.integration
+    {
         println!();
         println!("💡 CLI Hint:");
         println!("============");
         println!("To recreate this project without prompts, use:");
         println!();
-        
+
         let mut command = "fuzz-init".to_string();
-        
+
         // Add project name
         command.push_str(&format!(" {}", project_name));
-        
+
         // Add language if it was from template source
         if let TemplateSource::Local(language) = template_source {
             command.push_str(&format!(" --language {}", language));
         }
-        
+
         // Add other parameters
         command.push_str(&format!(" --fuzzer {}", fuzzer));
         command.push_str(&format!(" --integration {}", integration));
-        
+
         if minimal_mode {
             command.push_str(" --minimal");
         }
-        
+
         println!("  {}", command);
         println!();
     }

@@ -59,11 +59,11 @@ jobs:
           ./target/release/fuzz-init --help
           ./target/release/fuzz-init --generate-docs > /dev/null
 
-          - name: Upload test artifacts
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: quick-test-results
-        path: |
-          test-c/
-          test-minimal/
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quick-test-results
+          path: |
+            test-c/
+            test-minimal/

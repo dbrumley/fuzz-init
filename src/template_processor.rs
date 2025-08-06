@@ -450,24 +450,24 @@ pub struct ProjectCharacteristics {
 /// Detect project characteristics from the target directory
 pub fn detect_project_characteristics(output_dir: &Path) -> anyhow::Result<ProjectCharacteristics> {
     let mut characteristics = ProjectCharacteristics::default();
-    
+
     // The output directory is typically the fuzz directory, so we need to go up one level
     // to analyze the parent project
     let project_root = output_dir.parent().unwrap_or(output_dir);
-    
+
     // Detect XML parsing libraries
     characteristics.detected_xml_lib = has_xml_parsing_headers(project_root);
-    
+
     // Detect CMake version and library targets
     if let Ok(cmake_info) = detect_cmake_info(project_root) {
         characteristics.cmake_version = cmake_info.version;
         characteristics.detected_library_target = cmake_info.primary_library_target;
         characteristics.project_has_build_dir = cmake_info.has_build_dir;
     }
-    
+
     // Determine sanitizer mismatch risk
     characteristics.sanitizer_mismatch_risk = has_sanitizer_mismatch_risk(project_root);
-    
+
     Ok(characteristics)
 }
 
@@ -476,40 +476,48 @@ fn has_xml_parsing_headers(project_root: &Path) -> bool {
     // Look for common XML parsing headers and patterns
     let include_dirs = [
         project_root.join("include"),
-        project_root.join("src"), 
+        project_root.join("src"),
         project_root.join("lib"),
     ];
-    
+
     for include_dir in &include_dirs {
         if include_dir.exists() {
             // Check for common XML parsing library indicators
-            if has_files_matching(include_dir, &[
-                "parse.hpp", "parse.h",
-                "xml.hpp", "xml.h", 
-                "adm/parse.hpp",
-                "rapidxml",
-                "tinyxml",
-                "pugixml",
-                "libxml",
-            ]) {
+            if has_files_matching(
+                include_dir,
+                &[
+                    "parse.hpp",
+                    "parse.h",
+                    "xml.hpp",
+                    "xml.h",
+                    "adm/parse.hpp",
+                    "rapidxml",
+                    "tinyxml",
+                    "pugixml",
+                    "libxml",
+                ],
+            ) {
                 return true;
             }
-            
+
             // Check for XML-related directory structures
             if has_directories_matching(include_dir, &["adm", "xml", "rapidxml"]) {
                 return true;
             }
         }
     }
-    
+
     // Check for XML-related dependencies in CMakeLists.txt
     if let Ok(cmake_content) = fs::read_to_string(project_root.join("CMakeLists.txt")) {
-        if cmake_content.contains("xml") || cmake_content.contains("XML") || 
-           cmake_content.contains("adm") || cmake_content.contains("rapidxml") {
+        if cmake_content.contains("xml")
+            || cmake_content.contains("XML")
+            || cmake_content.contains("adm")
+            || cmake_content.contains("rapidxml")
+        {
             return true;
         }
     }
-    
+
     false
 }
 
@@ -524,30 +532,31 @@ struct CMakeInfo {
 /// Detect CMake-related information
 fn detect_cmake_info(project_root: &Path) -> anyhow::Result<CMakeInfo> {
     let mut info = CMakeInfo::default();
-    
+
     // Check if there's a CMakeLists.txt
     let cmake_file = project_root.join("CMakeLists.txt");
     if !cmake_file.exists() {
         return Ok(info);
     }
-    
+
     // Check for existing build directory
     info.has_build_dir = project_root.join("build").exists();
-    
+
     // Read CMakeLists.txt to extract information
     let cmake_content = fs::read_to_string(&cmake_file)?;
-    
+
     // Extract CMake version requirement
-    if let Some(version_match) = regex::Regex::new(r"cmake_minimum_required\s*\(\s*VERSION\s+([0-9.]+)")
-        .unwrap()
-        .captures(&cmake_content) 
+    if let Some(version_match) =
+        regex::Regex::new(r"cmake_minimum_required\s*\(\s*VERSION\s+([0-9.]+)")
+            .unwrap()
+            .captures(&cmake_content)
     {
         info.version = Some(version_match.get(1).unwrap().as_str().to_string());
     }
-    
+
     // Try to detect the main library target
     info.primary_library_target = detect_library_target_from_cmake(&cmake_content, project_root);
-    
+
     Ok(info)
 }
 
@@ -556,7 +565,7 @@ fn detect_library_target_from_cmake(cmake_content: &str, project_root: &Path) ->
     // Look for add_library commands
     let library_regex = regex::Regex::new(r"add_library\s*\(\s*([^\s)]+)").unwrap();
     let mut library_targets = Vec::new();
-    
+
     for capture in library_regex.captures_iter(cmake_content) {
         let target_name = capture.get(1).unwrap().as_str().to_string();
         // Skip if it looks like a variable reference
@@ -564,23 +573,24 @@ fn detect_library_target_from_cmake(cmake_content: &str, project_root: &Path) ->
             library_targets.push(target_name);
         }
     }
-    
+
     // If we found library targets, try to pick the best one
     if !library_targets.is_empty() {
         // Get the project name from the directory or CMakeLists.txt
         let project_name = get_project_name_from_cmake(cmake_content, project_root);
-        
+
         // Prefer targets that match the project name
         if let Some(project_name) = &project_name {
             for target in &library_targets {
-                if target == project_name || 
-                   target == &format!("lib{}", project_name) ||
-                   target == &format!("{}_lib", project_name) {
+                if target == project_name
+                    || target == &format!("lib{}", project_name)
+                    || target == &format!("{}_lib", project_name)
+                {
                     return Some(target.clone());
                 }
             }
         }
-        
+
         // If no perfect match, return the first library target
         Some(library_targets[0].clone())
     } else {
@@ -593,14 +603,14 @@ fn get_project_name_from_cmake(cmake_content: &str, project_root: &Path) -> Opti
     // Try to extract from project() command
     if let Some(project_match) = regex::Regex::new(r"project\s*\(\s*([^\s)]+)")
         .unwrap()
-        .captures(cmake_content) 
+        .captures(cmake_content)
     {
         let project_name = project_match.get(1).unwrap().as_str();
         if !project_name.starts_with('$') {
             return Some(project_name.to_string());
         }
     }
-    
+
     // Fall back to directory name
     project_root
         .file_name()
@@ -634,7 +644,7 @@ fn has_files_matching(dir: &Path, patterns: &[&str]) -> bool {
                     }
                 }
             }
-            
+
             // Recursively check subdirectories (limited depth)
             if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
                 if has_files_matching(&entry.path(), patterns) {
@@ -672,27 +682,37 @@ pub fn enrich_template_data(
     template_path: Option<&Path>,
 ) -> anyhow::Result<serde_json::Value> {
     let characteristics = detect_project_characteristics(output_dir)?;
-    
+
     // Add characteristics to template data
     if let Some(data_obj) = data.as_object_mut() {
-        data_obj.insert("detected_xml_lib".to_string(), 
-                       serde_json::Value::Bool(characteristics.detected_xml_lib));
-        
+        data_obj.insert(
+            "detected_xml_lib".to_string(),
+            serde_json::Value::Bool(characteristics.detected_xml_lib),
+        );
+
         if let Some(target) = characteristics.detected_library_target {
-            data_obj.insert("detected_library_target".to_string(), 
-                           serde_json::Value::String(target));
+            data_obj.insert(
+                "detected_library_target".to_string(),
+                serde_json::Value::String(target),
+            );
         }
-        
+
         if let Some(version) = characteristics.cmake_version {
-            data_obj.insert("cmake_version".to_string(), 
-                           serde_json::Value::String(version));
+            data_obj.insert(
+                "cmake_version".to_string(),
+                serde_json::Value::String(version),
+            );
         }
-        
-        data_obj.insert("sanitizer_mismatch_risk".to_string(), 
-                       serde_json::Value::Bool(characteristics.sanitizer_mismatch_risk));
-        
-        data_obj.insert("project_has_build_dir".to_string(), 
-                       serde_json::Value::Bool(characteristics.project_has_build_dir));
+
+        data_obj.insert(
+            "sanitizer_mismatch_risk".to_string(),
+            serde_json::Value::Bool(characteristics.sanitizer_mismatch_risk),
+        );
+
+        data_obj.insert(
+            "project_has_build_dir".to_string(),
+            serde_json::Value::Bool(characteristics.project_has_build_dir),
+        );
 
         // Run project analysis if analysis script exists
         if let Ok(analysis_data) = run_project_analysis(output_dir, template_name, template_path) {
@@ -702,7 +722,7 @@ pub fn enrich_template_data(
             }
         }
     }
-    
+
     Ok(data)
 }
 
@@ -720,12 +740,16 @@ fn run_project_analysis(
         // Embedded template - extract to temp and run
         #[cfg(debug_assertions)]
         {
-            Path::new(TEMPLATES_PATH).join(template_name).join("analyze_project.sh")
+            Path::new(TEMPLATES_PATH)
+                .join(template_name)
+                .join("analyze_project.sh")
         }
         #[cfg(not(debug_assertions))]
         {
             // For release builds, we'd need to extract the script first
-            return Err(anyhow::anyhow!("Project analysis not supported in release builds yet"));
+            return Err(anyhow::anyhow!(
+                "Project analysis not supported in release builds yet"
+            ));
         }
     };
 

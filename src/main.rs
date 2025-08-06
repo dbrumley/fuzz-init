@@ -39,10 +39,11 @@ async fn main() -> anyhow::Result<()> {
     // Get all necessary inputs
     let (project_name, prompted_project) = get_project_name_with_tracking(&args)?;
     prompted_values.project_name = prompted_project;
-    
-    let (template_source, prompted_language) = determine_template_source_with_tracking(&args, &available_templates)?;
+
+    let (template_source, prompted_language) =
+        determine_template_source_with_tracking(&args, &available_templates)?;
     prompted_values.language = prompted_language;
-    
+
     let (template_name, template_path) =
         get_template_name(&template_source, &available_templates).await?;
 
@@ -56,10 +57,11 @@ async fn main() -> anyhow::Result<()> {
     // Get user selections
     let (default_fuzzer, prompted_fuzzer) = select_fuzzer_with_tracking(&args, metadata.as_ref())?;
     prompted_values.fuzzer = prompted_fuzzer;
-    
-    let (integration_type, prompted_integration) = select_integration_with_tracking(&args, metadata.as_ref())?;
+
+    let (integration_type, prompted_integration) =
+        select_integration_with_tracking(&args, metadata.as_ref())?;
     prompted_values.integration = prompted_integration;
-    
+
     let minimal_mode = determine_minimal_mode(&args, &template_source);
 
     // Setup Handlebars with helpers
@@ -82,19 +84,28 @@ async fn main() -> anyhow::Result<()> {
 
     // Generate project - handle nested paths properly
     let out_path = Path::new(&project_name);
-    
+
     // Enrich template data with project characteristics and analysis
-    data = enrich_template_data(data, out_path, &template_name, template_path.as_ref().map(|p| p.as_path()))?;
-    
+    data = enrich_template_data(
+        data,
+        out_path,
+        &template_name,
+        template_path.as_ref().map(|p| p.as_path()),
+    )?;
+
     // Create parent directories if they don't exist
     if let Some(parent) = out_path.parent() {
         if !parent.as_os_str().is_empty() && parent != Path::new(".") {
             std::fs::create_dir_all(parent).map_err(|e| {
-                anyhow::anyhow!("Failed to create parent directories for '{}': {}", project_name, e)
+                anyhow::anyhow!(
+                    "Failed to create parent directories for '{}': {}",
+                    project_name,
+                    e
+                )
             })?;
         }
     }
-    
+
     // Process template based on type
     if let Some(ref path) = template_path {
         // Remote template - process from filesystem
@@ -125,7 +136,14 @@ async fn main() -> anyhow::Result<()> {
     // Display post-generation message if it exists
     display_post_generation_message(out_path)?;
 
-    print_next_steps(&project_name, minimal_mode, &prompted_values, &template_source, &default_fuzzer, &integration_type);
+    print_next_steps(
+        &project_name,
+        minimal_mode,
+        &prompted_values,
+        &template_source,
+        &default_fuzzer,
+        &integration_type,
+    );
 
     Ok(())
 }
@@ -406,16 +424,16 @@ This will:
 /// Display post-generation message if it exists and then clean it up
 fn display_post_generation_message(output_dir: &Path) -> anyhow::Result<()> {
     let message_path = output_dir.join("POST_GENERATION_MESSAGE.md");
-    
+
     if message_path.exists() {
         // Read and display the message
         let message_content = std::fs::read_to_string(&message_path)?;
-        
+
         println!("\n{}", message_content);
-        
+
         // Clean up the message file after displaying it
         std::fs::remove_file(&message_path)?;
     }
-    
+
     Ok(())
 }
