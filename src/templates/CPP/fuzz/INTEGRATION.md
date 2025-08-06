@@ -1,611 +1,541 @@
-# Integrating Fuzzing with Your Build System
+# {{project_name}} Fuzzing Integration Guide
 
-This directory contains a flexible fuzzing scaffold that can be adapted to your existing project and build system.
+## 🎯 Step 1: Identify Your Fuzz Targets
 
-## Integration Overview
+{{#if suggested_targets}}
+Based on your {{project_name}} project analysis, here are **high-value** fuzzing targets:
 
-The fuzzing setup is designed to work alongside your existing project without
-modifying your main build system. All fuzzing-specific files are contained in
-this `fuzz/` directory.
+### **Recommended Primary Targets:**
+{{#each suggested_targets}}
+- **`{{this.function}}`** - {{this.description}}{{#if this.primary}} ⭐ **START HERE**{{/if}}
+{{/each}}
 
-**Key Design Principle**: The fuzz harness needs access to your code, but HOW
-it gets that access depends on your project structure. This guide shows you
-multiple approaches to choose from.
+{{else}}
+**Find high-value targets in your {{project_name}} project:**
 
-## Critical: Sanitizer Instrumentation
+Look for functions that:
+- Parse external input (`parse*`, `decode*`, `read*`)
+- Process untrusted data (file formats, network input, user input)
+- Take string, stream, or buffer parameters
+- Have complex logic or memory management
 
-**⚠️ IMPORTANT**: For effective fuzzing, both your project code AND the fuzz
-harness must be compiled with the same sanitizer flags. This ensures consistent
-instrumentation for bug detection.
-
-### The Problem
-
-If your main project builds without sanitizer flags (e.g., `gcc -O2
-myproject.c`) but the fuzz harness builds with sanitizers (e.g., `clang
--fsanitize=address fuzz.c`), you get **mixed instrumentation**:
-
-- ✅ AddressSanitizer will catch bugs in fuzz harness code
-- ❌ AddressSanitizer will NOT catch bugs in your project code (where you want
-  to find bugs!)
-
-### The Solution: Fuzzing Libraries (Makefile Integration)
-
-{{#if (eq integration "make")}}
-This template automatically handles consistent instrumentation using **fuzzing
-libraries**:
-
+**Quick discovery:**
 ```bash
-# Parent Makefile builds multiple library versions:
-make lib            # Regular library: libgps.a (no sanitizers)
-make lib-libfuzzer  # Fuzzing library: libgps-libfuzzer.a (with sanitizers)
-make lib-afl        # AFL library: libgps-afl.a (with sanitizers)
-make lib-honggfuzz  # HonggFuzz library: libgps-honggfuzz.a (with sanitizers)
-
-# Fuzz targets automatically use the right library:
-make fuzz-libfuzzer  # Links against libgps-libfuzzer.a
-make fuzz-afl        # Links against libgps-afl.a
+# Search your headers for parsing functions:
+grep -r "parse.*(" include/ 
+grep -r "decode.*(" include/
+grep -r "read.*(" include/
 ```
 
-**Benefits:**
-
-- ✅ Consistent sanitizer instrumentation across all code
-- ✅ Normal builds remain fast (no sanitizer overhead)
-- ✅ Different fuzzers can use appropriate sanitizer configurations
-- ✅ No manual flag management required
-  {{/if}}
-
-{{#if (eq integration "standalone")}}
-This template handles instrumentation automatically in `build.sh`:
-
-- All code (project + fuzz harness) compiled with `-fsanitize=address`
-- Consistent instrumentation ensures AddressSanitizer catches all bugs
-- No mixed instrumentation issues
-  {{/if}}
-
-{{#if (eq integration "cmake")}}
-The CMake configuration uses **target dependencies** for automatic library management:
-
-**How it works:**
-
-- Parent CMakeLists.txt creates fuzzer-specific library targets (e.g.,
-  `{{project_name}}-libfuzzer`)
-- fuzz/CMakeLists.txt references these targets directly, not file paths
-- CMake automatically ensures correct build order: library → fuzzer executable
-
-**Library naming convention:**
-
-- `{{project_name}}-libfuzzer` → builds as `lib{{project_name}}-libfuzzer.a`
-- `{{project_name}}-afl` → builds as `lib{{project_name}}-afl.a`
-- Each library compiled with appropriate sanitizer flags for its fuzzer
-
-**Key advantage:** No manual library path management - CMake handles all
-dependencies automatically.
 {{/if}}
 
-### Verification
+---
 
-To verify consistent instrumentation:
+## 🚀 Step 2: Implement Your First Target
 
-```bash
-# Check symbols in your fuzzing binary:
-nm your-fuzz-binary | grep -i asan
-# Should show AddressSanitizer symbols from both project and fuzz code
+**Replace the demo code** in `src/{{target_name}}.cpp` with a real target from your {{project_name}} library:
 
-# Or run with verbose sanitizer output:
-ASAN_OPTIONS=verbosity=1 ./your-fuzz-binary
-```
+### Template for String/Text Processing
 
-## Choose Your Integration Approach
+```cpp
+#include <cstdint>
+#include <cstddef>
+#include <string>
+#include <memory>
 
-Select the approach that best matches your project structure:
+// TODO: Add your project headers here
+// #include "your_project/parser.h"
+// #include "your_project/decoder.h"
 
-### Approach 1: Fuzzing Library Linking (Recommended)
-
-**Best for**: Projects that already build static libraries or can easily be
-modified to do so.
-
-**How it works**: Your project builds multiple library versions - regular
-libraries for normal use, and fuzzing libraries with sanitizer instrumentation.
-The fuzz harness automatically links against the appropriate fuzzing library.
-
-**Pros**: Clean separation, consistent sanitizer instrumentation, no manual
-flag management, fast normal builds
-**Cons**: Requires library build capability, multiple library versions
-
-### Approach 2: Direct Source Compilation
-
-**Best for**: Projects with source files that can be compiled directly,
-monolithic codebases.
-
-**How it works**: The fuzz build process includes your source files directly in
-the compilation.
-
-**Pros**: Works with any project structure, simple setup
-**Cons**: Recompiles project code with fuzzing flags, may expose more internals
-
-### Approach 3: Object File Linking
-
-**Best for**: Projects with complex build systems that produce object files you
-can reuse.
-
-**How it works**: Link against pre-built object files from your main build.
-
-**Pros**: Reuses existing build artifacts, good for complex projects
-**Cons**: Must ensure compatible compilation flags
-
-### Approach 4: Hybrid
-
-**Best for**: Complex projects where different parts need different approaches.
-
-**How it works**: Combine library linking, source compilation, and object files as needed.
-
-## Directory Structure
-
-```
-fuzz/
-├── src/{{target_name}}.c       # Your fuzz target implementation
-├── driver/main.c               # Universal fuzzer driver
-├── testsuite/                  # Initial test inputs
-├── dictionaries/               # Fuzzing dictionaries
-├── Makefile                    # Makefile integration (if selected)
-├── CMakeLists.txt             # CMake integration (if selected)
-├── build.sh                   # Standalone build script
-├── Mayhemfile                 # Mayhem configuration
-├── Dockerfile                 # Container for fuzzing
-└── INTEGRATION.md             # This file
-```
-
-## Implementation Steps
-
-### Step 1: Implement Your Fuzz Target
-
-Edit `src/{{target_name}}.c` and implement your fuzzing logic in the
-`LLVMFuzzerTestOneInput` function:
-
-```c
-#include <stdint.h>
-#include <stddef.h>
-#include <stdlib.h>
-#include <string.h>
-// Include your project headers here
-#include "your_project.h"
-
-int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-    // Handle empty input
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     if (size == 0) return 0;
-
-    // Null-terminate string inputs if needed
-    char* input = malloc(size + 1);
-    if (!input) return 0;
-    memcpy(input, data, size);
-    input[size] = '\0';
-
-    // Call your project functions
-    your_parse_function(input);
-
-    free(input);
+    
+    // Convert fuzz input to string
+    std::string input(reinterpret_cast<const char*>(data), size);
+    
+    try {
+        // TODO: Replace with your target function
+        // Examples:
+        // auto result = your_project::parse_document(input);
+        // auto result = your_project::decode_message(input);
+        // your_project::process_config(input);
+        
+        // Force evaluation if needed
+        // if (result) { (void)result->some_method(); }
+        
+    } catch (const std::exception& e) {
+        // Expected for malformed input - don't crash the fuzzer
+        return 0;
+    } catch (...) {
+        // Catch any other exceptions
+        return 0;
+    }
+    
     return 0;
 }
 ```
 
-### Step 2: Choose and Implement Your Integration Approach
+### Template for Binary Data Processing
 
-#### Approach 1: Fuzzing Library Linking (Recommended)
-
-{{#if (eq integration "make")}}
-If your project can build a static library, this approach provides the best
-sanitizer consistency:
-
-```bash
-# 1. Add library targets to your main Makefile (see parent Makefile for examples):
-lib-libfuzzer: $(LIBFUZZER_LIBRARY)
-$(LIBFUZZER_LIBRARY): $(LIB_SOURCES:.c=-libfuzzer.o)
-	$(AR) rcs $@ $^
-
-# 2. The fuzz/Makefile automatically uses the right library:
-LIBS_LIBFUZZER = -lgps-libfuzzer  # Links with sanitizer-instrumented version
+```cpp
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
+    if (size == 0) return 0;
+    
+    try {
+        // TODO: Replace with your binary processing function
+        // Examples:
+        // your_project::parse_binary_format(data, size);
+        // your_project::decode_packet(data, size);
+        // your_project::process_image_data(data, size);
+        
+    } catch (...) {
+        // Handle exceptions gracefully
+    }
+    
+    return 0;
+}
 ```
 
-**For Makefile integration:**
+{{#if suggested_targets}}
+### Concrete Example for {{project_name}}
 
-```makefile
-# In fuzz/Makefile, the library selection is automatic:
-INCLUDES = -I../include                    # Path to your headers
-LIBPATH = -L..                            # Path to your libraries
-LIBS_LIBFUZZER = -lgps-libfuzzer          # Sanitizer-instrumented library
-LIBS_AFL = -lgps-afl                      # AFL-compatible library
-LIBS_HONGGFUZZ = -lgps-honggfuzz          # HonggFuzz-compatible library
-LIBS_STANDALONE = -lgps-fuzz              # General fuzzing library
+```cpp
+{{suggested_example_code}}
+```
+{{/if}}
 
-# Each fuzzer target uses the appropriate library automatically
+---
+
+## ⚡ Step 3: Build and Test
+
+{{#if (eq integration "cmake")}}
+### Quick Setup (Auto-Configuration)
+```bash
+cd fuzz
+./configure.sh  # Handles CMake setup and building
+```
+
+### Manual Setup (If configure.sh fails)
+```bash
+cd fuzz
+mkdir build && cd build
+cmake -S .. -B .
+cmake --build . --target {{target_name}}_{{default_fuzzer}}
+```
+
+### Test Your Target
+```bash
+# Quick smoke test
+echo 'test input' | ./{{target_name}}_{{default_fuzzer}}
+
+# Real fuzzing session
+./{{target_name}}_{{default_fuzzer}} ../testsuite/ -dict=../dictionaries/{{target_name}}.dict -max_total_time=300
 ```
 
 {{else}}
-If your project can build a static library, this is the cleanest approach:
-
+### Build Your Fuzzer
 ```bash
-# 1. First, make your project build a library with fuzzing flags
-# In your main project directory, modify your build to support fuzzing:
-FUZZ_CFLAGS="-fsanitize=address" make libmyproject.a
-
-# 2. Edit the fuzz build files to link against it:
+cd fuzz
+make {{default_fuzzer}}  # or: make all
 ```
 
-**For Makefile integration:**
-
-```makefile
-# In fuzz/Makefile, update these lines:
-INCLUDES = -I../../include -I../../src  # Path to your headers
-LIBPATH = -L../..                       # Path to your library
-LIBS = -lmyproject                       # Your library name (without lib prefix)
-
-# The build targets will automatically use these
-```
-
-{{/if}}
-
-**For CMake integration:**
-
-```cmake
-# In parent CMakeLists.txt, add fuzzer-specific library targets:
-add_library({{project_name}}-libfuzzer STATIC ${LIB_SOURCES})
-target_compile_options({{project_name}}-libfuzzer PRIVATE -g -O1 -fsanitize=address,fuzzer-no-link)
-target_include_directories({{project_name}}-libfuzzer PUBLIC include)
-
-# The fuzz/CMakeLists.txt automatically uses the target:
-# target_link_libraries(${TARGET_NAME} PRIVATE {{project_name}}-libfuzzer)
-```
-
-**For standalone build.sh:**
-
+### Test Your Target
 ```bash
-# Edit build.sh to add library linking
-LDFLAGS="-L../.. -lmyproject"
-```
+# Quick smoke test
+echo 'test input' | ./{{target_name}}-{{default_fuzzer}}
 
-#### Approach 2: Direct Source Compilation
-
-If you can't or don't want to build a library, include your sources directly:
-
-**For Makefile integration:**
-
-```makefile
-# In fuzz/Makefile, add your sources:
-PROJECT_SOURCES = ../../src/parser.c \
-                  ../../src/validator.c \
-                  ../../src/utils.c
-
-INCLUDES = -I../../include -I../../src
-
-# Update build targets to include PROJECT_SOURCES:
-$(STANDALONE_BIN): $(FUZZ_SRC) $(DRIVER_SRC) $(PROJECT_SOURCES)
-	$(CC) $(CFLAGS) $(INCLUDES) -DFUZZER_TYPE_STANDALONE \
-		$(DRIVER_SRC) $(FUZZ_SRC) $(PROJECT_SOURCES) -o $@
-
-$(LIBFUZZER_BIN): $(FUZZ_SRC) $(DRIVER_SRC) $(PROJECT_SOURCES)
-	clang $(CFLAGS) $(INCLUDES) -fsanitize=fuzzer,address \
-		-DFUZZER_TYPE_LIBFUZZER \
-		$(DRIVER_SRC) $(FUZZ_SRC) $(PROJECT_SOURCES) -o $@
-
-# Repeat for other fuzzer targets...
-```
-
-**For CMake integration:**
-
-```cmake
-# In fuzz/CMakeLists.txt:
-set(PROJECT_SOURCES
-    ../../src/parser.c
-    ../../src/validator.c
-    ../../src/utils.c
-)
-
-target_sources(target_name PRIVATE ${PROJECT_SOURCES})
-target_include_directories(target_name PRIVATE ../../include ../../src)
-```
-
-#### Approach 3: Object File Linking
-
-If your project builds object files you can reuse:
-
-**For Makefile integration:**
-
-```makefile
-# In fuzz/Makefile:
-PROJECT_OBJS = ../../build/parser.o \
-               ../../build/validator.o \
-               ../../build/utils.o
-
-INCLUDES = -I../../include
-
-$(STANDALONE_BIN): $(FUZZ_SRC) $(DRIVER_SRC)
-	$(CC) $(CFLAGS) $(INCLUDES) -DFUZZER_TYPE_STANDALONE \
-		$(DRIVER_SRC) $(FUZZ_SRC) $(PROJECT_OBJS) -o $@
-```
-
-**For CMake integration:**
-
-```cmake
-# In fuzz/CMakeLists.txt:
-target_link_libraries(target_name PRIVATE
-    ../../build/parser.o
-    ../../build/validator.o
-    ../../build/utils.o
-)
-```
-
-#### Approach 4: Hybrid Approach
-
-For complex projects, combine approaches as needed:
-
-```makefile
-# Link against some libraries, include some sources, use some objects
-LIBS = -L../../lib -lcore
-PROJECT_SOURCES = ../../src/special_module.c
-PROJECT_OBJS = ../../build/legacy.o
-
-$(LIBFUZZER_BIN): $(FUZZ_SRC) $(DRIVER_SRC) $(PROJECT_SOURCES)
-	clang $(CFLAGS) $(INCLUDES) -fsanitize=fuzzer,address \
-		$(DRIVER_SRC) $(FUZZ_SRC) $(PROJECT_SOURCES) $(PROJECT_OBJS) $(LIBS) -o $@
-```
-
-### Step 3: Update Test Cases and Dictionary
-
-Replace the example test cases with inputs relevant to your project:
-
-```bash
-cd testsuite/
-rm -f *  # Remove example files
-
-# Add your own test cases
-echo "your test input" > input1.txt
-echo "another test case" > input2.txt
-echo '{"key": "value"}' > json_input.json  # For JSON parsers
-printf "\x89PNG\r\n\x1a\n" > png_header.bin  # For binary formats
-```
-
-Edit `dictionaries/{{target_name}}.dict` with domain-specific keywords:
-
-```
-# For a JSON parser:
-"{"
-"}"
-"null"
-"true"
-"false"
-
-# For a network protocol:
-"GET"
-"POST"
-"HTTP/1.1"
-"Content-Length"
-
-# For your specific domain:
-"MAGIC_CONSTANT"
-"SIGNATURE_BYTES"
-"\x00\x01\x02\x03"
-```
-
-## Building and Running
-
-{{#if (eq integration "make")}}
-
-### Using Makefile Integration (Your Configuration)
-
-Since you selected **Makefile integration** with **{{default_fuzzer}}** as your default fuzzer:
-
-```bash
-cd fuzz/
-
-# Build your default fuzzer
-make {{default_fuzzer}}
-
-# Run quick smoke test
-make test
-
-# Run your fuzzer
+# Real fuzzing session
 ./{{target_name}}-{{default_fuzzer}} testsuite/
-{{#if (eq default_fuzzer "libfuzzer")}}
-./{{target_name}}-{{default_fuzzer}} -dict=dictionaries/{{target_name}}.dict testsuite/
-{{/if}}
-{{#if (eq default_fuzzer "afl")}}
-mkdir -p findings
-afl-fuzz -i testsuite -o findings -- ./{{target_name}}-{{default_fuzzer}}
-{{/if}}
-{{#if (eq default_fuzzer "honggfuzz")}}
-mkdir -p corpus
-honggfuzz -i testsuite -W corpus -- ./{{target_name}}-{{default_fuzzer}}
-{{/if}}
 ```
+{{/if}}
 
-### Building Other Fuzzer Types
+---
 
-```bash
-# Build additional fuzzer types (if fuzzer engines are installed)
-{{#if (eq default_fuzzer "standalone")}}
-make afl            # Requires AFL++
-make libfuzzer      # Requires Clang with libFuzzer
-make honggfuzz      # Requires HonggFuzz
-{{/if}}
-{{#if (eq default_fuzzer "afl")}}
-make standalone     # No fuzzer engine required
-make libfuzzer      # Requires Clang with libFuzzer
-make honggfuzz      # Requires HonggFuzz
-{{/if}}
-{{#if (eq default_fuzzer "libfuzzer")}}
-make standalone     # No fuzzer engine required
-make afl            # Requires AFL++
-make honggfuzz      # Requires HonggFuzz
-{{/if}}
-{{#if (eq default_fuzzer "honggfuzz")}}
-make standalone     # No fuzzer engine required
-make afl            # Requires AFL++
-make libfuzzer      # Requires Clang with libFuzzer
-{{/if}}
-```
+## 🔧 Step 4: Optimize for Better Bug Finding
 
-{{/if}}
+### Enable Full Sanitizers (Critical!)
 
 {{#if (eq integration "cmake")}}
-
-### Using CMake Integration (Your Configuration)
-
-Since you selected **CMake integration** with **{{default_fuzzer}}** as your default fuzzer:
+For effective bug finding, rebuild {{project_name}} with AddressSanitizer:
 
 ```bash
-cd fuzz/
-mkdir build && cd build
+# From {{project_name}} project root
+cmake -S . -B build-asan -DCMAKE_CXX_FLAGS="-fsanitize=address -g -O1"
+cmake --build build-asan
 
-CC=clang cmake ..
-cmake --build . --target {{target_name}}_{{default_fuzzer}}
-cmake --build . --target test
-
-# Run your fuzzer
-./{{target_name}}_{{default_fuzzer}} ../testsuite/
-{{#if (eq default_fuzzer "libfuzzer")}}
-./{{target_name}}_{{default_fuzzer}} -dict=../dictionaries/{{target_name}}.dict ../testsuite/
-{{/if}}
-{{#if (eq default_fuzzer "afl")}}
-mkdir -p findings
-afl-fuzz -i ../testsuite -o findings -- ./{{target_name}}_{{default_fuzzer}}
-{{/if}}
-{{#if (eq default_fuzzer "honggfuzz")}}
-mkdir -p corpus
-honggfuzz -i ../testsuite -W corpus -- ./{{target_name}}_{{default_fuzzer}}
-{{/if}}
+# Rebuild fuzzer with sanitizer integration
+cd fuzz
+rm -rf build
+cmake -S . -B build -DPARENT_BUILD_DIR=../build-asan
+cmake --build build --target {{target_name}}_{{default_fuzzer}}
 ```
 
-### Building Other Fuzzer Types
+{{else}}
+For effective bug finding, rebuild {{project_name}} with AddressSanitizer:
 
 ```bash
-# Build additional fuzzer types
-cmake --build . --target {{target_name}}_standalone
-cmake --build . --target {{target_name}}_afl
-cmake --build . --target {{target_name}}_libfuzzer
-cmake --build . --target {{target_name}}_honggfuzz
-```
+# Rebuild your main project with sanitizers
+make clean
+CXXFLAGS="-fsanitize=address -g" make
 
+# Rebuild fuzzer
+cd fuzz
+make clean && make {{default_fuzzer}}
+```
 {{/if}}
 
-{{#if (eq integration "standalone")}}
+### Improve Test Cases
 
-### Using Standalone Build Script (Your Configuration)
-
-Since you selected **standalone integration** with **{{default_fuzzer}}** as your default fuzzer:
+Replace generic test cases with {{project_name}}-specific ones:
 
 ```bash
-cd fuzz/
+cd testsuite/{{target_name}}/
+rm demo_crash.txt safe.txt
 
-# Build with your default fuzzer
-./build.sh          # Builds {{default_fuzzer}} by default
-./{{target_name}}-{{default_fuzzer}} testsuite/
-
-# Run smoke test
-echo "Test input" | ./{{target_name}}-{{default_fuzzer}}
+# TODO: Add real test cases for your project
+# Examples:
+# echo "valid input" > valid_input.txt
+# echo "edge case" > edge_case.txt
+# printf "\x00\x01\x02\x03" > binary_input.bin
 ```
 
-### Building Other Fuzzer Types
+### Enhance Dictionary
+
+Edit `dictionaries/{{target_name}}.dict` with {{project_name}}-specific keywords:
+
+```
+# TODO: Add keywords specific to your input format
+# Examples:
+# "magic_header"
+# "version"
+# "null"
+# "true"
+# "false"
+# "\x00\x01"
+```
+
+---
+
+## 📈 Step 5: Add More Targets (Advanced)
+
+### Multiple Harnesses
+
+Create additional harnesses for different targets:
 
 ```bash
-# Build with specific fuzzer types
-USE_STANDALONE=1 ./build.sh
-USE_AFL=1 ./build.sh
-USE_LIBFUZZER=1 ./build.sh
-USE_HONGGFUZZ=1 ./build.sh
+# Copy base harness
+cp src/{{target_name}}.cpp src/second_target.cpp
+
+# Edit src/second_target.cpp to fuzz a different function
 ```
 
-{{/if}}
-
-## Integration with Your Main Build System
-
-Add fuzzing targets to your main build system for convenience:
-
-### Main Makefile Integration
-
-```makefile
-# In your project's main Makefile:
-.PHONY: fuzz-build fuzz-test fuzz-clean
-
-fuzz-build:
-	$(MAKE) -C fuzz
-
-fuzz-test:
-	$(MAKE) -C fuzz test
-
-fuzz-clean:
-	$(MAKE) -C fuzz clean
-
-# Add to your existing clean target
-clean: fuzz-clean
-	# your existing clean commands
-```
-
-### Main CMake Integration
+{{#if (eq integration "cmake")}}
+### Update CMakeLists.txt for Multiple Targets
 
 ```cmake
-# In your project's main CMakeLists.txt:
+# Add after the main target definition in CMakeLists.txt:
+
+# Additional fuzzing targets (uncomment and modify):
+# add_executable(second_target_{{default_fuzzer}} src/second_target.cpp)
+# target_compile_options(second_target_{{default_fuzzer}} PRIVATE ${COMMON_FLAGS} ${FUZZER_FLAGS})
+# target_link_libraries(second_target_{{default_fuzzer}} PRIVATE ${REQUIRED_LIBRARY_TARGET})
+# target_link_options(second_target_{{default_fuzzer}} PRIVATE ${FUZZER_FLAGS})
+```
+
+### Build Additional Targets
+
+```bash
+cmake --build build --target second_target_{{default_fuzzer}}
+./second_target_{{default_fuzzer}} ../testsuite/
+```
+
+{{else}}
+### Update Makefile for Multiple Targets
+
+Add new targets to your `Makefile`:
+
+```makefile
+# Add new fuzzer targets
+second_target-{{default_fuzzer}}: src/second_target.cpp $(DRIVER_SRC)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(FUZZER_FLAGS) \
+		$(DRIVER_SRC) $< $(LIBS) -o $@
+```
+{{/if}}
+
+---
+
+## ✅ Success Checklist
+
+- ✅ **Identified target function** in {{project_name}} to fuzz
+- ✅ **Replaced demo code** with real function calls
+- ✅ **Built successfully** with {{#if (eq integration "cmake")}}./configure.sh{{else}}make {{default_fuzzer}}{{/if}}
+- ✅ **Smoke test passes** - fuzzer runs without immediate crash
+- ✅ **Sanitizers enabled** - rebuilt {{project_name}} with AddressSanitizer
+- ✅ **Real test cases** - added {{project_name}}-specific samples
+- ✅ **Dictionary updated** - added domain-specific keywords
+- ✅ **Finding bugs** - fuzzer discovers crashes in your code
+
+---
+
+## 🔧 Troubleshooting
+
+{{#if (eq integration "cmake")}}
+### CMake Issues
+
+**Library not found:**
+```bash
+# Check that {{project_name}} builds correctly first
+cd .. && cmake -S . -B build && cmake --build build
+cd fuzz && ./configure.sh
+```
+
+{{#if (eq default_fuzzer "libfuzzer")}}
+**Wrong compiler:**
+```bash
+# Ensure clang++ is available for libFuzzer
+which clang++
+export CXX=clang++
+```
+{{/if}}
+
+{{else}}
+### Build Issues
+
+**Library not found:**
+```bash
+# Check library paths in Makefile
+# Update LIBPATH and LIBS variables as needed
+```
+
+**Header files not found:**
+```bash
+# Check include paths in Makefile
+# Update INCLUDES variable with correct paths
+```
+{{/if}}
+
+### Fuzzing Issues
+
+**No crashes found:**
+- Verify sanitizers are enabled (see Step 4)
+- Try different targets or input types
+- Add more malformed test cases
+- Check that exceptions are being caught properly
+
+**Fuzzer crashes immediately:**
+- Check that your harness handles exceptions properly
+- Test with simple input first: `echo "test" | ./fuzzer`
+- Verify library linking is correct
+
+---
+
+## 📚 Detailed Reference ({{integration}} Integration)
+
+### Understanding Your Setup
+
+This fuzzing setup uses **{{integration}} integration** with **{{default_fuzzer}}** as the default fuzzer.
+
+**Generated Files:**
+{{#if (eq integration "cmake")}}
+- `CMakeLists.txt` - CMake configuration for fuzzing
+{{else}}
+- `Makefile` - Build configuration for fuzzing
+{{/if}}
+- `src/{{target_name}}.cpp` - Your fuzz harness (customize this!)
+{{#if (eq integration "cmake")}}
+- `configure.sh` - Auto-setup script
+{{else}}
+- `build.sh` - Build script for standalone mode
+{{/if}}
+- `dictionaries/{{target_name}}.dict` - Fuzzing dictionary
+- `testsuite/` - Initial test inputs
+
+{{#if (eq integration "cmake")}}
+### CMake Integration Details
+
+**Library Linking Strategy:**
+
+The CMake setup intelligently links against your {{project_name}} library:
+
+1. **Preferred**: Links against fuzzer-specific library (e.g., `{{project_name}}-{{default_fuzzer}}`)
+2. **Fallback**: Links against main library target (`{{project_name}}` or `lib{{project_name}}`)
+3. **Auto-detection**: Scans for available library targets
+
+**Sanitizer Coordination:**
+
+For effective fuzzing, **both your library AND the fuzzer** need the same sanitizers:
+
+```bash
+# Build {{project_name}} with sanitizers
+cmake -S . -B build-asan -DCMAKE_CXX_FLAGS="-fsanitize=address -g"
+cmake --build build-asan
+
+# Rebuild fuzzer to use sanitizer-instrumented library
+cd fuzz && rm -rf build
+cmake -S . -B build -DPARENT_BUILD_DIR=../build-asan
+cmake --build build
+```
+
+### Adding CMake Integration to Main Project
+
+Add fuzzing support to your main CMakeLists.txt:
+
+```cmake
+# In main CMakeLists.txt
 option(BUILD_FUZZING "Build fuzzing targets" OFF)
 
 if(BUILD_FUZZING)
+    # Add sanitizer flags when fuzzing
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -g -O1")
+    
+    # Optional: Create fuzzer-specific library target
+    add_library({{project_name}}-{{default_fuzzer}} STATIC ${LIB_SOURCES})
+    target_compile_options({{project_name}}-{{default_fuzzer}} PRIVATE -fsanitize=address -g)
+    target_include_directories({{project_name}}-{{default_fuzzer}} PUBLIC include)
+    
+    # Enable fuzzing subdirectory
     add_subdirectory(fuzz)
 endif()
 ```
 
 Enable with: `cmake -DBUILD_FUZZING=ON ..`
 
-## Continuous Integration
+{{else}}
+### Makefile Integration Details
 
-Add fuzzing to your CI pipeline:
+**Library Linking Strategy:**
 
-```yaml
-# GitHub Actions example
-- name: Build and test fuzzer
-  run: |
-    cd fuzz
-    make test  # or appropriate build command for your setup
+The Makefile setup provides multiple approaches:
+
+1. **Library Linking**: Link against pre-built libraries
+2. **Source Compilation**: Include source files directly
+3. **Object Linking**: Link against object files
+
+**Sanitizer Coordination:**
+
+Ensure consistent sanitizer flags between main project and fuzzer:
+
+```makefile
+# In main project Makefile
+FUZZ_CXXFLAGS = -fsanitize=address -g -O1
+
+# Build library with fuzzing flags
+lib{{project_name}}-fuzz.a: $(SOURCES)
+	$(CXX) $(CXXFLAGS) $(FUZZ_CXXFLAGS) -c $(SOURCES)
+	ar rcs $@ *.o
 ```
 
-## Troubleshooting
+### Integration Approaches
 
-### Common Issues
+**Approach 1: Library Linking (Recommended)**
+```makefile
+# In fuzz/Makefile
+LIBS = -L.. -l{{project_name}}
+INCLUDES = -I../include
+```
 
-1. **Library not found**:
+**Approach 2: Direct Source Compilation**
+```makefile
+# In fuzz/Makefile
+PROJECT_SOURCES = ../src/parser.cpp ../src/utils.cpp
+INCLUDES = -I../include -I../src
+```
 
-   - Check that your library exists in the expected location
-   - Verify library name matches what's specified in LIBS
-   - For approach 1, ensure the library is built before running fuzzer builds
+**Approach 3: Object File Linking**
+```makefile
+# In fuzz/Makefile
+PROJECT_OBJS = ../build/parser.o ../build/utils.o
+INCLUDES = -I../include
+```
+{{/if}}
 
-2. **Header files not found**:
+### Performance Optimization
 
-   - Check INCLUDES paths point to correct directories
-   - Ensure all necessary headers are accessible
-   - Verify relative paths are correct from fuzz/ directory
+**Faster builds:**
+{{#if (eq integration "cmake")}}
+```bash
+# Use ninja for faster builds
+cmake -S . -B build -GNinja
+ninja -C build
+```
+{{else}}
+```bash
+# Use parallel make
+make -j$(nproc)
+```
+{{/if}}
 
-3. **Compilation errors**:
+**Parallel fuzzing:**
+```bash
+# Run multiple fuzzer instances
+./{{target_name}}_{{default_fuzzer}} corpus1/ &
+./{{target_name}}_{{default_fuzzer}} corpus2/ &
+./{{target_name}}_{{default_fuzzer}} corpus3/ &
+wait
+```
 
-   - Check that source file paths are correct
-   - Ensure compatible compiler flags between main project and fuzzer
-   - For approach 3, verify object files were built with compatible flags
+### Integration with CI/CD
 
-4. **Linking errors**:
-   - For library approach: check library contains expected symbols
-   - For direct sources: ensure all required source files are included
-   - Check for missing dependencies (system libraries, etc.)
+Add to your GitHub Actions:
 
-### Getting Help
+```yaml
+- name: Build and test fuzzing
+  run: |
+{{#if (eq integration "cmake")}}
+    cmake -S . -B build -DBUILD_FUZZING=ON
+    cmake --build build
+    cd fuzz/build && ./{{target_name}}_{{default_fuzzer}} ../testsuite/ -runs=1000
+{{else}}
+    cd fuzz && make {{default_fuzzer}}
+    ./{{target_name}}-{{default_fuzzer}} testsuite/ -runs=1000
+{{/if}}
+```
 
-- Check the README.md for general fuzzing information
-- Verify your integration approach matches your project structure
-- Test your build modifications incrementally
-- Use `make clean && make standalone` to test basic building first
+### Common Integration Patterns
 
-## Next Steps
+**Custom include paths:**
+{{#if (eq integration "cmake")}}
+```cmake
+target_include_directories(${TARGET_NAME} PRIVATE 
+    ../external/boost
+    ../third_party/includes
+)
+```
+{{else}}
+```makefile
+INCLUDES = -I../include -I../external/boost -I../third_party/includes
+```
+{{/if}}
 
-1. ✅ Choose integration approach based on your project structure
-2. ✅ Edit the build files (Makefile/CMakeLists.txt/build.sh) with your paths
-3. ✅ Implement your fuzz target in `src/{{target_name}}.c`
-4. ✅ Add relevant test cases and dictionary entries
-5. ✅ Run smoke test: `make test` or equivalent
-6. ✅ Start fuzzing: `make libfuzzer && ./{{target_name}}-libfuzzer testcases/`
-7. ✅ Integrate with your CI/CD pipeline
-8. ✅ Scale up for longer fuzzing campaigns
+**Link additional libraries:**
+{{#if (eq integration "cmake")}}
+```cmake
+target_link_libraries(${TARGET_NAME} PRIVATE 
+    ${REQUIRED_LIBRARY_TARGET}
+    Boost::system
+    ${CMAKE_DL_LIBS}
+)
+```
+{{else}}
+```makefile
+LIBS = -L.. -l{{project_name}} -lboost_system -ldl
+```
+{{/if}}
+
+**Conditional compilation:**
+{{#if (eq integration "cmake")}}
+```cmake
+target_compile_definitions(${TARGET_NAME} PRIVATE
+    FUZZING_BUILD
+    $<$<CONFIG:Debug>:DEBUG_LOGGING>
+)
+```
+{{else}}
+```makefile
+CXXFLAGS += -DFUZZING_BUILD -DDEBUG_LOGGING
+```
+{{/if}}
+
+---
+
+That's it! You now have a complete {{project_name}} fuzzing setup optimized for {{integration}} with {{default_fuzzer}}. Start by implementing your first target, find some bugs, then expand to additional targets. Happy fuzzing! 🐛🎯

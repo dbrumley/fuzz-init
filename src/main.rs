@@ -72,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
         .to_string_lossy()
         .to_string();
 
-    let data = json!({
+    let mut data = json!({
         "project_name": project_name,
         "target_name": project_basename, // Use base name only for template filenames
         "default_fuzzer": default_fuzzer,
@@ -82,6 +82,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Generate project - handle nested paths properly
     let out_path = Path::new(&project_name);
+    
+    // Enrich template data with project characteristics and analysis
+    data = enrich_template_data(data, out_path, &template_name, template_path.as_ref().map(|p| p.as_path()))?;
     
     // Create parent directories if they don't exist
     if let Some(parent) = out_path.parent() {
@@ -118,6 +121,9 @@ async fn main() -> anyhow::Result<()> {
         "Project '{}' created with {} template!",
         project_name, template_name
     );
+
+    // Display post-generation message if it exists
+    display_post_generation_message(out_path)?;
 
     print_next_steps(&project_name, minimal_mode, &prompted_values, &template_source, &default_fuzzer, &integration_type);
 
@@ -395,4 +401,21 @@ This will:
     );
 
     println!("{}", mdx_content);
+}
+
+/// Display post-generation message if it exists and then clean it up
+fn display_post_generation_message(output_dir: &Path) -> anyhow::Result<()> {
+    let message_path = output_dir.join("POST_GENERATION_MESSAGE.md");
+    
+    if message_path.exists() {
+        // Read and display the message
+        let message_content = std::fs::read_to_string(&message_path)?;
+        
+        println!("\n{}", message_content);
+        
+        // Clean up the message file after displaying it
+        std::fs::remove_file(&message_path)?;
+    }
+    
+    Ok(())
 }

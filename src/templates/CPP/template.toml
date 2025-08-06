@@ -71,7 +71,7 @@ full_mode_only = ["src", "include", "test", "test_data"]
 # File extensions that should be templated
 template_extensions = [".cpp", ".hpp", ".c", ".h", ".md", ".sh", ".toml", ".txt"]
 
-# File extensions that should be executable  
+# File extensions that should be executable
 executable_extensions = [".sh"]
 
 # File extensions that should not be templated
@@ -118,6 +118,18 @@ template = true
 [[files]]
 path = "TUTORIAL.md"
 condition = "minimal == false" 
+
+# Post-generation message (always included, cleaned up after display)
+[[files]]
+path = "POST_GENERATION_MESSAGE.md"
+template = true
+
+# Auto-configuration script for minimal mode 
+[[files]]
+path = "fuzz/configure.sh"
+condition = "minimal == true"
+executable = true
+template = true
 
 # Directory creation rules
 [[directories]]
