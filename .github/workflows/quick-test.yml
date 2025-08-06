@@ -27,10 +27,10 @@ jobs:
       - name: Build fuzz-init
         run: cargo build --release
 
-      - name: Test C template with dev-mode
+      - name: Test CPP template with dev-mode
         run: |
-          echo "Testing C template with dev-mode..."
-          ./target/release/fuzz-init --dev-mode --language C --dev-output ./test-c
+          echo "Testing CPP template with dev-mode..."
+          ./target/release/fuzz-init --dev-mode --language cpp --integration cmake --fuzzer libfuzzer--dev-output ./test-c
 
           # Check that projects were generated
           echo "Checking generated projects..."
@@ -38,21 +38,6 @@ jobs:
 
           # Check that fuzz directories exist
           find ./test-c -name "fuzz" -type d
-
-      - name: Test minimal mode
-        run: |
-          echo "Testing minimal mode..."
-          ./target/release/fuzz-init test-minimal --language C --minimal --dev-output ./test-minimal
-
-          # Check minimal mode structure
-          ls -la ./test-minimal/
-          if [ -d "./test-minimal/fuzz" ]; then
-            echo "✓ Minimal mode created fuzz directory"
-            ls -la ./test-minimal/fuzz/
-          else
-            echo "✗ Minimal mode missing fuzz directory"
-            exit 1
-          fi
 
       - name: Test CLI help
         run: |

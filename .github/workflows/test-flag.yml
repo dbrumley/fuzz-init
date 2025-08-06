@@ -40,7 +40,7 @@ jobs:
       - name: Compare with --dev-mode
         run: |
           echo "Testing --dev-mode functionality..."
-          ./target/release/fuzz-init --dev-mode --language C --dev-output ./test-dev-mode
+          ./target/release/fuzz-init --dev-mode --language cpp --integration cmake --fuzzer libfuzzer --dev-output ./test-dev-mode
 
           echo "Dev-mode output structure:"
           find ./test-dev-mode -type d | head -10
