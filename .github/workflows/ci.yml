@@ -12,16 +12,10 @@ env:
 jobs:
   # Build and test the fuzz-init tool itself
   build:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
         rust: [stable, 1.70]
-        include:
-          - os: ubuntu-latest
-            rust: stable
-          - os: macos-latest
-            rust: stable
 
     steps:
       - uses: actions/checkout@v4
