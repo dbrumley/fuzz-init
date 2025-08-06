@@ -12,23 +12,34 @@ A CLI tool for scaffolding fuzzing projects that addresses common developer pain
 
 Setting up fuzzing infrastructure often involves:
 
-- **Build system complexity**: Integrating fuzzers with existing Makefiles, CMake, or custom build systems
-- **Fuzzer lock-in**: Code that works with one fuzzer (e.g., libFuzzer) but not others (AFL, HonggFuzz)
-- **Sanitizer configuration**: Proper setup of AddressSanitizer, UBSan, and MemorySanitizer
-- **Project structure**: Organizing code to separate application logic from fuzzing harnesses
-- **Integration overhead**: Adding fuzzing to existing projects without breaking existing builds
-- **Documentation gaps**: Missing or outdated guides for different fuzzer/build combinations
+- **Build system complexity**: Integrating fuzzers with existing Makefiles,
+  CMake, or custom build systems
+- **Fuzzer lock-in**: Code that works with one fuzzer (e.g., libFuzzer) but not
+  others (AFL, HonggFuzz)
+- **Sanitizer configuration**: Proper setup of AddressSanitizer, UBSan, and
+  MemorySanitizer
+- **Project structure**: Organizing code to separate application logic from
+  fuzzing harnesses
+- **Integration overhead**: Adding fuzzing to existing projects without
+  breaking existing builds
+- **Documentation gaps**: Missing or outdated guides for different fuzzer/build
+  combinations
 - **Onboarding gaps**: Bringing new developers up to speed on how fuzzing works
 
 ## How fuzz-init Works
 
 fuzz-init generates projects using a **universal fuzzing architecture**:
 
-1. **Standard interface**: Uses `LLVMFuzzerTestOneInput` which works with all major fuzzers
-2. **Template system**: Embedded templates for C, C++, Rust, and more with configurable build systems
-3. **Conditional generation**: Templates adapt based on your choices (fuzzer, build system, minimal/full mode)
-4. **Build system integration**: Generates appropriate Makefiles, CMakeLists.txt, or standalone scripts
-5. **Drop-in or tutorial-based**: Generate just fuzz templates, or a full tutorial in your favorite language.
+1. **Standard interface**: Uses `LLVMFuzzerTestOneInput` which works with all
+   major fuzzers
+2. **Template system**: Embedded templates for C, C++, Rust, and more with
+   configurable build systems
+3. **Conditional generation**: Templates adapt based on your choices (set
+   default fuzzer, build system, minimal/full mode)
+4. **Build system integration**: Generates appropriate Makefiles,
+   CMakeLists.txt, or standalone scripts
+5. **Drop-in or tutorial-based**: Generate just fuzz templates, or a full
+   tutorial in your favorite language.
 
 This approach means you write your fuzzing logic once, and it works with AFL, libFuzzer, HonggFuzz, and other fuzzers without code changes.
 
@@ -58,10 +69,23 @@ project/
 
 ### Fuzzer Compatibility
 
+A new project includes rules for building:
+
 - **libFuzzer**: Clang-based fuzzing with coverage feedback
 - **AFL/AFL++**: Industry-standard fuzzing with mutation strategies
 - **HonggFuzz**: Alternative fuzzing engine with different trade-offs
 - **Standalone**: Binary targets for manual fuzzing or integration
+
+**Example:** If you are using `make` or `cmake`, then:
+
+```
+make afl        # build for fuzzing with AFL/AFL++ and Mayhem.
+make libfuzzer  # build for fuzzing with libfuzzer and Mayhem.
+make standalone # build a binary-only target, works with Mayhem.
+make fuzz       # Builds all the above. Gracefully skips any targets
+                # where you don't have the pre-requisite tools
+                # (e.g., clang++, afl-clang) installed with a warning.
+```
 
 ## Usage
 
@@ -71,7 +95,7 @@ project/
 # Interactive mode - prompts for options
 fuzz-init
 
-# Specify everything upfront
+# Specify everything upfront, and set make fuzz target to libfuzzer instead of everything
 fuzz-init my-parser --language c --fuzzer libfuzzer --integration cmake
 
 # Minimal mode for existing projects
@@ -82,7 +106,7 @@ fuzz-init existing-app --language c --minimal --integration make
 
 ```bash
 # Generate just the fuzz/ directory
-fuzz-init . --minimal --language c --fuzzer libfuzzer
+fuzz-init . --minimal --language c
 
 # Results in fuzz/ with everything needed to start fuzzing
 cd fuzz && make libfuzzer
@@ -96,7 +120,8 @@ cd fuzz && make libfuzzer
 fuzz-init --dev-mode --language c
 
 # Continuous testing during development
-fuzz-init --dev-mode --language c --watch src/templates/C/
+fuzz-init cargo run -- --dev-mode --language CPP --watch --dev-output ./scratch/
+
 ```
 
 ## Template System

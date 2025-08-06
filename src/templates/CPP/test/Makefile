@@ -2,8 +2,8 @@
 # Test Makefile for {{project_name}}
 # Builds and runs unit tests for the library
 
-CC ?= cc  
-CFLAGS = -g -O0 -Wall -Wextra -std=c99
+CXX ?= c++  
+CXXFLAGS = -g -O0 -Wall -Wextra -std=c++11
 INCLUDES = -I../include
 LIBPATH = -L../build
 LIBS = -l{{project_name}}
@@ -14,7 +14,7 @@ TEST_BUILD_DIR = $(BUILD_DIR)/test
 LIBRARY_PATH = $(BUILD_DIR)/lib{{project_name}}.a
 
 # Source files
-TEST_SOURCES = test_lib.c
+TEST_SOURCES = test_lib.cpp
 TEST_TARGET = $(TEST_BUILD_DIR)/test_{{project_name}}
 
 # Default target
@@ -27,7 +27,7 @@ $(TEST_BUILD_DIR):
 # Build the test executable
 $(TEST_TARGET): $(TEST_SOURCES) | check-library $(TEST_BUILD_DIR)
 	@echo "Building test suite..."
-	$(CC) $(CFLAGS) $(INCLUDES) $(TEST_SOURCES) $(LIBPATH) $(LIBS) -o $@
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(TEST_SOURCES) $(LIBPATH) $(LIBS) -o $@
 
 # Run the tests
 test: $(TEST_TARGET)

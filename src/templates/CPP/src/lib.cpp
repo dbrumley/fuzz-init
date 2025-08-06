@@ -39,7 +39,7 @@ void oob_write_bug(int x, int y) {
 }
 
 void double_free_bug(int x, int y) {
-    char* buf = malloc(x > 0 ? x : 16);
+    char* buf = (char *) malloc(x > 0 ? x : 16);
     free(buf);
     if (x == 5 && y == -79927771) {
         free(buf); // Double free

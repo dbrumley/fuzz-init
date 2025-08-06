@@ -15,6 +15,8 @@ extern int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size);
 /* Optional initialization function that users can implement */
 __attribute__((weak)) int LLVMFuzzerInitialize(int* argc, char*** argv) {
     /* Default empty implementation */
+    (void)argc; /* Suppress unused parameter warning */
+    (void)argv; /* Suppress unused parameter warning */
     return 0;
 }
 
@@ -98,7 +100,7 @@ int main(int argc, char** argv) {
             fseek(f, 0, SEEK_SET);
 
             if (size > 0 && size < 1024 * 1024) { /* 1MB limit */
-                uint8_t* data = malloc(size);
+                uint8_t* data = (uint8_t*)malloc(size);
                 if (data && fread(data, 1, size, f) == (size_t)size) {
                     printf("Testing %s (%ld bytes)\n", argv[i], size);
                     LLVMFuzzerTestOneInput(data, size);

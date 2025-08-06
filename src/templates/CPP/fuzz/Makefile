@@ -1,266 +1,306 @@
-# Makefile for fuzzing {{project_name}} with {{default_fuzzer}}
-# This Makefile is optimized for your chosen fuzzer and integration approach
+# Universal Fuzzing Makefile for {{project_name}}
+# Links against standard lib{{project_name}}.a with intelligent fuzzer detection
 
-{{#if (eq default_fuzzer "libfuzzer")}}
-# libFuzzer configuration
-CC = clang
-CFLAGS = -g -O2 -Wall -Wextra
-FUZZER_FLAGS = -fsanitize=fuzzer,address
-TARGET = {{target_name}}-libfuzzer
-LIBRARY_SUFFIX = libfuzzer
-{{/if}}
+# =============================================================================
+# Environment Detection
+# =============================================================================
 
-{{#if (eq default_fuzzer "afl")}}
-# AFL configuration  
-CC = afl-clang-fast
-CFLAGS = -g -O2 -Wall -Wextra
-FUZZER_FLAGS = -fsanitize=address
-TARGET = {{target_name}}-afl
-LIBRARY_SUFFIX = afl
-{{/if}}
+# Detect available fuzzing tools
+HAVE_CLANG := $(shell which clang++ >/dev/null 2>&1 && echo yes)
+HAVE_AFL := $(shell which afl-clang-fast++ >/dev/null 2>&1 && echo yes)
+HAVE_HFUZZ := $(shell which hfuzz-clang++ >/dev/null 2>&1 && echo yes)
 
-{{#if (eq default_fuzzer "honggfuzz")}}
-# HonggFuzz configuration
-CC = hfuzz-clang
-CFLAGS = -g -O2 -Wall -Wextra
-FUZZER_FLAGS = -fsanitize=address
-TARGET = {{target_name}}-honggfuzz
-LIBRARY_SUFFIX = honggfuzz
-{{/if}}
+# =============================================================================
+# Library Path Configuration
+# =============================================================================
 
-{{#if (eq default_fuzzer "standalone")}}
-# Standalone configuration
-CC = clang
-CFLAGS = -g -O2 -Wall -Wextra
-FUZZER_FLAGS = -fsanitize=address
-TARGET = {{target_name}}-standalone
-LIBRARY_SUFFIX = fuzz
-{{/if}}
-
-# Build directories and paths
 {{#unless minimal}}
-# Full mode - integrated with parent project
+# Full mode - library paths relative to parent project
 BUILD_DIR = ../build
-FUZZ_BUILD_DIR = ../build/fuzz
 INCLUDES = -I../include
-LIBPATH = -L$(BUILD_DIR)
-LIBRARY_NAME = lib{{project_name}}-$(LIBRARY_SUFFIX).a
-LIBRARY_PATH = $(BUILD_DIR)/$(LIBRARY_NAME)
+LIBRARY_DIR = $(BUILD_DIR)
 {{else}}
-# Minimal mode - standalone fuzz directory
+# Minimal mode - discover user's existing library
 BUILD_DIR = ./build
-FUZZ_BUILD_DIR = $(BUILD_DIR)
-INCLUDES = -I./include  # TODO: Add your project's include directories
-LIBPATH = -L./lib       # TODO: Add path to your instrumented library
-LIBRARY_NAME = lib{{project_name}}-$(LIBRARY_SUFFIX).a
-LIBRARY_PATH = ./lib/$(LIBRARY_NAME)
+INCLUDES = -I./include -I../include
+
+# Try to find user's library (customizable)
+DETECTED_LIB := $(shell find .. -maxdepth 3 -name "lib*.a" ! -path "*/fuzz/*" ! -path "*/.git/*" 2>/dev/null | head -1)
+ifneq ($(DETECTED_LIB),)
+    LIBRARY_DIR := $(dir $(DETECTED_LIB))
+    DETECTED_LIB_NAME := $(notdir $(DETECTED_LIB))
+    INTEGRATION_MODE = library
+else
+    LIBRARY_DIR = $(BUILD_DIR)
+    INTEGRATION_MODE = standalone
+endif
 {{/unless}}
 
-# Source files
-FUZZ_SRC = src/{{target_name}}.c
-{{#if (eq default_fuzzer "libfuzzer")}}
-# libFuzzer doesn't need driver (provides its own main)
-SOURCES = $(FUZZ_SRC)
-{{else}}
-# Other fuzzers need the universal driver
+# Standard library naming (overridable via LIBRARY_PATH from parent)
+LIBRARY_PATH ?= $(LIBRARY_DIR)/lib{{project_name}}.a
+
+# =============================================================================
+# Compiler Configuration
+# =============================================================================
+
+# Use clang++ for best fuzzing support, fallback to g++
+CXX ?= $(if $(HAVE_CLANG),clang++,g++)
+CC ?= $(if $(HAVE_CLANG),clang,gcc)
+
+# Standard flags for harness compilation
+CXXFLAGS = -g -O2 -Wall -Wextra -std=c++11 $(INCLUDES)
+CFLAGS = -g -O2 -Wall -Wextra $(INCLUDES)
+
+# =============================================================================
+# Source Files and Targets
+# =============================================================================
+
+FUZZ_SRC = src/{{target_name}}.cpp
 DRIVER_SRC = driver/main.c
-SOURCES = $(FUZZ_SRC) $(DRIVER_SRC)
-{{/if}}
 
-# Library to link against
-LIBS = -l{{project_name}}-$(LIBRARY_SUFFIX)
+# Target executables with standard naming
+TARGET_LIBFUZZER = $(BUILD_DIR)/{{target_name}}-libfuzzer
+TARGET_AFL = $(BUILD_DIR)/{{target_name}}-afl  
+TARGET_HONGGFUZZ = $(BUILD_DIR)/{{target_name}}-honggfuzz
+TARGET_STANDALONE = $(BUILD_DIR)/{{target_name}}-standalone
 
-# Build configuration based on integration type
-{{#if (eq integration "make")}}
-# Makefile integration - links against parent library
-PROJECT_SOURCES =
-PROJECT_OBJS = 
-{{else}}
-# For other integrations, you may need to adjust these paths:
-# PROJECT_SOURCES = ../../src/parser.c ../../src/utils.c
-# PROJECT_OBJS = ../../build/parser.o ../../build/utils.o
-PROJECT_SOURCES =
-PROJECT_OBJS = 
-{{/if}}
+# Object files
+HARNESS_OBJ = $(BUILD_DIR)/harness.o
+DRIVER_OBJ = $(BUILD_DIR)/driver.o
 
-# Default target - builds your chosen fuzzer
-all: {{default_fuzzer}}
+# =============================================================================
+# Main Targets
+# =============================================================================
 
-# Build {{default_fuzzer}} fuzzer
-{{default_fuzzer}}: $(FUZZ_BUILD_DIR)/$(TARGET)
+.PHONY: all clean test help libfuzzer afl honggfuzz standalone
+.PHONY: check-library check-environment
 
-# Create output directory
-$(FUZZ_BUILD_DIR):
-	@mkdir -p $(FUZZ_BUILD_DIR)
+# Default target builds the best available fuzzer
+all: check-environment
+ifeq ($(HAVE_CLANG),yes)
+	@$(MAKE) libfuzzer
+else
+	@$(MAKE) standalone
+endif
 
-$(FUZZ_BUILD_DIR)/$(TARGET): $(SOURCES) | check-library $(FUZZ_BUILD_DIR)
-{{#if (eq default_fuzzer "libfuzzer")}}
-	@echo "Building libFuzzer target..."
+# =============================================================================
+# Individual Fuzzer Targets
+# =============================================================================
+
+libfuzzer: check-library $(TARGET_LIBFUZZER)
+
+afl: check-library $(TARGET_AFL)
+
+honggfuzz: check-library $(TARGET_HONGGFUZZ)
+
+standalone: check-library $(TARGET_STANDALONE)
+
+# =============================================================================
+# Build Rules
+# =============================================================================
+
+$(BUILD_DIR):
+	@mkdir -p $(BUILD_DIR)
+
+# libFuzzer target (no separate driver needed)
+$(TARGET_LIBFUZZER): $(FUZZ_SRC) | $(BUILD_DIR)
+ifeq ($(HAVE_CLANG),yes)
+	@echo "🔨 Building libFuzzer target..."
+	clang++ $(CXXFLAGS) -fsanitize=address,undefined,fuzzer \
+		$(FUZZ_SRC) $(LIBRARY_PATH) -o $@
+	@echo "✅ Built: $@"
+else
+	@echo "❌ libFuzzer requires clang++ but only found: $(CXX)"
+	@echo "💡 Install clang: sudo apt install clang (Ubuntu) or xcode-select --install (macOS)"
+	@false
+endif
+
+# AFL target (needs universal driver)
+$(TARGET_AFL): $(HARNESS_OBJ) $(DRIVER_OBJ) | $(BUILD_DIR)
+	@echo "🔨 Linking AFL target..."
+ifeq ($(HAVE_AFL),yes)
+	afl-clang-fast++ -fsanitize=address,undefined -g \
+		$(HARNESS_OBJ) $(DRIVER_OBJ) $(LIBRARY_PATH) -o $@
+else ifeq ($(HAVE_CLANG),yes)
+	clang++ -fsanitize=address,undefined -g \
+		$(HARNESS_OBJ) $(DRIVER_OBJ) $(LIBRARY_PATH) -o $@
+else
+	$(CXX) -g $(HARNESS_OBJ) $(DRIVER_OBJ) $(LIBRARY_PATH) -o $@
+endif
+	@echo "✅ Built: $@"
+
+# HonggFuzz target (needs universal driver)
+$(TARGET_HONGGFUZZ): $(HARNESS_OBJ) $(DRIVER_OBJ) | $(BUILD_DIR)
+ifeq ($(HAVE_HFUZZ),yes)
+	@echo "🔨 Linking HonggFuzz target..."
+	hfuzz-clang++ -fsanitize=address,undefined \
+		$(HARNESS_OBJ) $(DRIVER_OBJ) $(LIBRARY_PATH) -o $@
+	@echo "✅ Built: $@"
+else
+	@echo "❌ HonggFuzz not found. Install: apt install honggfuzz"
+	@false
+endif
+
+# Standalone target (needs universal driver, no sanitizers)
+$(TARGET_STANDALONE): $(HARNESS_OBJ) $(DRIVER_OBJ) | $(BUILD_DIR)
+	@echo "🔨 Building standalone target..."
+	$(CXX) -g $(HARNESS_OBJ) $(DRIVER_OBJ) $(LIBRARY_PATH) -o $@
+	@echo "✅ Built: $@"
+
+# Compile harness object
+$(HARNESS_OBJ): $(FUZZ_SRC) | $(BUILD_DIR)
+	@echo "🔨 Compiling harness..."
+	$(CXX) $(CXXFLAGS) -c $(FUZZ_SRC) -o $@
+
+# Compile driver object (for non-libFuzzer targets)
+$(DRIVER_OBJ): $(DRIVER_SRC) | $(BUILD_DIR)  
+	@echo "🔨 Compiling universal driver..."
+	$(CC) $(CFLAGS) -c $(DRIVER_SRC) -o $@
+
+# =============================================================================
+# Fuzzer Execution Targets
+# =============================================================================
+
+run-libfuzzer: $(TARGET_LIBFUZZER)
+	@echo "🚀 Running libFuzzer..."
+	@mkdir -p corpus
+	$(TARGET_LIBFUZZER) corpus/ -dict=dictionaries/{{target_name}}.dict -max_total_time=60
+
+run-afl: $(TARGET_AFL)
+	@echo "🚀 Running AFL..."
+	@mkdir -p findings
+	@echo "Note: AFL requires 'echo core | sudo tee /proc/sys/kernel/core_pattern' on Linux"
+ifeq ($(HAVE_AFL),yes)
+	afl-fuzz -i testsuite -o findings -- $(TARGET_AFL)
+else
+	@echo "Manual AFL testing (no afl-fuzz found):"
+	@echo "  echo 'test input' | $(TARGET_AFL)"
+endif
+
+run-standalone: $(TARGET_STANDALONE)
+	@echo "🚀 Running standalone test..."
+	$(TARGET_STANDALONE) testsuite/
+
+# =============================================================================
+# Testing and Validation
+# =============================================================================
+
+test: check-environment
+ifeq ($(HAVE_CLANG),yes)
+	@$(MAKE) test-libfuzzer
+else
+	@$(MAKE) test-standalone
+endif
+
+test-libfuzzer: $(TARGET_LIBFUZZER)
+	@echo "🧪 Testing libFuzzer with sample inputs..."
+	$(TARGET_LIBFUZZER) testsuite/ -runs=10 -max_total_time=5
+	@echo "✅ libFuzzer test passed!"
+
+test-afl: $(TARGET_AFL)
+	@echo "🧪 Testing AFL target with sample input..."
+	@echo "test input" | $(TARGET_AFL)
+	@echo "✅ AFL test passed!"
+
+test-standalone: $(TARGET_STANDALONE)
+	@echo "🧪 Testing standalone target..."
+	@echo "test input" | $(TARGET_STANDALONE)
+	@echo "✅ Standalone test passed!"
+
+# =============================================================================
+# Environment Checks
+# =============================================================================
+
+check-environment:
+	@echo "🔍 Fuzzing environment:"
+	@echo "   Mode: {{#if minimal}}minimal{{else}}full{{/if}}"
+	@echo "   Compiler: $(CXX)"
 {{#unless minimal}}
-	$(CC) $(CFLAGS) $(INCLUDES) $(FUZZER_FLAGS) \
-		-DFUZZER_TYPE_LIBFUZZER \
-		$(FUZZ_SRC) $(PROJECT_SOURCES) $(PROJECT_OBJS) $(LIBPATH) $(LIBS) -o $@
+	@echo "   Library: $(LIBRARY_PATH)"
 {{else}}
-	# Minimal mode: try library first, fall back to standalone
-	$(CC) $(CFLAGS) $(INCLUDES) $(FUZZER_FLAGS) \
-		-DFUZZER_TYPE_LIBFUZZER \
-		$(FUZZ_SRC) $(PROJECT_SOURCES) $(PROJECT_OBJS) $(LIBPATH) $(LIBS) -o $@ 2>/dev/null || \
-	$(CC) $(CFLAGS) $(INCLUDES) $(FUZZER_FLAGS) \
-		-DFUZZER_TYPE_LIBFUZZER \
-		$(SOURCES) -o $@
+ifeq ($(INTEGRATION_MODE),library)
+	@echo "   Integration: Using detected library"
+	@echo "   Library: $(DETECTED_LIB)"
+else
+	@echo "   Integration: Standalone (no library found)"
+endif
 {{/unless}}
-{{else}}
-	@echo "Building {{default_fuzzer}} target..."
+ifeq ($(HAVE_CLANG),yes)
+	@echo "   clang++: ✅"
+else
+	@echo "   clang++: ❌ (affects libFuzzer support)"
+endif
+ifeq ($(HAVE_AFL),yes)
+	@echo "   AFL++: ✅"
+else
+	@echo "   AFL++: ❌"
+endif
+
+check-library:
 {{#unless minimal}}
-	$(CC) $(CFLAGS) $(INCLUDES) $(FUZZER_FLAGS) \
-		-DFUZZER_TYPE_{{default_fuzzer}} \
-		$(SOURCES) $(PROJECT_SOURCES) $(PROJECT_OBJS) $(LIBPATH) $(LIBS) -o $@ 2>/dev/null || \
-	clang $(CFLAGS) $(INCLUDES) $(FUZZER_FLAGS) \
-		-DFUZZER_TYPE_{{default_fuzzer}} \
-		$(SOURCES) $(PROJECT_SOURCES) $(PROJECT_OBJS) $(LIBPATH) $(LIBS) -o $@
+	@if [ ! -f "$(LIBRARY_PATH)" ]; then \
+		echo "❌ Library not found: $(LIBRARY_PATH)"; \
+		echo "💡 Run 'make lib-fuzz' in parent directory first"; \
+		echo ""; \
+		echo "ℹ️  Fuzzing requires your library to be built with sanitizers:"; \
+		echo "   cd .. && make lib-fuzz"; \
+		exit 1; \
+	fi
+	@echo "✅ Found library: $(LIBRARY_PATH)"
 {{else}}
-	# Minimal mode: try library first, fall back to standalone
-	$(CC) $(CFLAGS) $(INCLUDES) $(FUZZER_FLAGS) \
-		-DFUZZER_TYPE_{{default_fuzzer}} \
-		$(SOURCES) $(PROJECT_SOURCES) $(PROJECT_OBJS) $(LIBPATH) $(LIBS) -o $@ 2>/dev/null || \
-	$(CC) $(CFLAGS) $(INCLUDES) $(FUZZER_FLAGS) \
-		-DFUZZER_TYPE_{{default_fuzzer}} \
-		$(SOURCES) -o $@
+ifeq ($(INTEGRATION_MODE),library)
+	@if [ ! -f "$(DETECTED_LIB)" ]; then \
+		echo "❌ Previously detected library no longer exists: $(DETECTED_LIB)"; \
+		echo "💡 Rebuild your project with sanitizer flags"; \
+		exit 1; \
+	fi
+	@echo "✅ Using library: $(DETECTED_LIB)"
+else
+	@echo "ℹ️  Minimal mode: Using built-in demonstration code"
+	@echo "🔄 To integrate with your library:"
+	@echo "   1. Build your library with sanitizer flags"
+	@echo "   2. Place it where we can find it (../lib{{project_name}}.a)"
+	@echo "   3. Edit src/{{target_name}}.cpp to call your functions"
+endif
 {{/unless}}
-{{/if}}
 
-# Run {{default_fuzzer}}
-{{#if (eq default_fuzzer "standalone")}}
-run: $(FUZZ_BUILD_DIR)/$(TARGET)
-	$(FUZZ_BUILD_DIR)/$(TARGET) testsuite/
-{{/if}}
+# =============================================================================
+# Cleanup and Help
+# =============================================================================
 
-{{#if (eq default_fuzzer "afl")}}
-run: $(FUZZ_BUILD_DIR)/$(TARGET)
-	@echo "Setting up AFL fuzzing..."
-	mkdir -p findings
-	afl-fuzz -i testsuite -o findings -- $(FUZZ_BUILD_DIR)/$(TARGET)
-{{/if}}
-
-{{#if (eq default_fuzzer "libfuzzer")}}
-run: $(FUZZ_BUILD_DIR)/$(TARGET)
-	@echo "Running libFuzzer..."
-	mkdir -p corpus
-	$(FUZZ_BUILD_DIR)/$(TARGET) corpus/ -dict=dictionaries/{{target_name}}.dict -max_total_time=60
-{{/if}}
-
-{{#if (eq default_fuzzer "honggfuzz")}}
-run: $(FUZZ_BUILD_DIR)/$(TARGET)
-	@echo "Running HonggFuzz..."
-	mkdir -p corpus
-	honggfuzz -i testsuite/ -W corpus/ -- $(FUZZ_BUILD_DIR)/$(TARGET)
-{{/if}}
-
-# Test target - builds and runs basic smoke test
-test: $(FUZZ_BUILD_DIR)/$(TARGET)
-	@echo "Running smoke test with {{default_fuzzer}}..."
-{{#if (eq default_fuzzer "libfuzzer")}}
-	@echo "Testing sample inputs..."
-	$(FUZZ_BUILD_DIR)/$(TARGET) testsuite/ -runs=10
-{{else}}
-	@echo "FUZZ" | $(FUZZ_BUILD_DIR)/$(TARGET)
-{{/if}}
-	@echo "Smoke test passed!"
-
-# Clean up build artifacts
 clean:
-	rm -f $(FUZZ_BUILD_DIR)/$(TARGET)
-	rm -rf findings corpus
-{{#if (eq minimal true)}}
+	rm -f $(TARGET_LIBFUZZER) $(TARGET_AFL) $(TARGET_HONGGFUZZ) $(TARGET_STANDALONE)
+	rm -f $(HARNESS_OBJ) $(DRIVER_OBJ)
+	rm -rf corpus findings
+{{#if minimal}}
 	rm -rf $(BUILD_DIR)
 {{/if}}
 
-# Library check - ensures appropriate fuzzing library exists
-check-library:
-{{#unless minimal}}
-	@echo "Checking for instrumented library..."
-	@if [ ! -f $(LIBRARY_PATH) ]; then \
-		echo "Error: Instrumented library not found at $(LIBRARY_PATH)"; \
-		echo "Run 'make lib-$(LIBRARY_SUFFIX)' in parent directory first."; \
-		echo ""; \
-		echo "Why? Fuzzing requires all code to be compiled with the same"; \
-		echo "sanitizer flags (e.g., AddressSanitizer) for proper bug detection."; \
-		exit 1; \
-	fi
-	@echo "✓ Library found: $(LIBRARY_PATH)"
-{{else}}
-	@echo "Minimal mode: Using built-in demonstration code"
-	@echo ""
-	@echo "ℹ️  This minimal template includes a simple crash demonstration."
-	@echo "   The fuzzer will quickly find inputs containing 'bug' and crash."
-	@echo ""
-	@echo "🔄 To integrate with your project:"
-	@if [ -f $(LIBRARY_PATH) ]; then \
-		echo "✓ Found your library: $(LIBRARY_PATH)"; \
-		echo "   Edit src/{{target_name}}.c to call your library functions"; \
-	elif [ -f "../lib{{project_name}}-$(LIBRARY_SUFFIX).a" ]; then \
-		echo "✓ Found your library: ../lib{{project_name}}-$(LIBRARY_SUFFIX).a"; \
-		echo "   Edit src/{{target_name}}.c to call your library functions"; \
-	elif [ -f "../src/lib.c" ] && [ -f "../include/lib.h" ]; then \
-		echo "✓ Found your source files: ../src/lib.c, ../include/lib.h"; \
-		echo "   Edit src/{{target_name}}.c to call your library functions"; \
-	else \
-		echo "   1. Add your instrumented library to: $(LIBRARY_PATH)"; \
-		echo "   2. OR place source files at: ../src/lib.c and ../include/lib.h"; \
-		echo "   3. Edit src/{{target_name}}.c to replace the demonstration code"; \
-		echo ""; \
-		echo "   Example library build:"; \
-		echo "     $(CC) $(FUZZER_FLAGS) -c your_source.c -o your_source.o"; \
-		echo "     ar rcs $(LIBRARY_PATH) your_source.o"; \
-	fi
-	@echo ""
-	@echo "📝 Next: Edit src/{{target_name}}.c and replace the TODO section with your code"
-{{/unless}}
-
-# Help target
 help:
-	@echo "Fuzzing Makefile for {{project_name}} ({{default_fuzzer}} mode)"
+	@echo "Universal Fuzzing Makefile for {{project_name}}"
 	@echo ""
-	@echo "Available targets:"
-	@echo "  all          - Build {{default_fuzzer}} fuzzer (default)"
-	@echo "  {{default_fuzzer}}     - Build {{default_fuzzer}} fuzzer"
-	@echo "  run          - Build and run {{default_fuzzer}}"
-	@echo "  test         - Build and run smoke test"
-	@echo "  clean        - Remove build artifacts"
-	@echo "  check-library - Verify fuzzing library exists"
-	@echo "  help         - Show this help"
+	@echo "Quick start:"
+	@echo "  make                 - Build best available fuzzer"
+	@echo "  make test            - Build and test"
 	@echo ""
-	@echo "Configuration:"
-{{#if (eq default_fuzzer "libfuzzer")}}
-	@echo "  Fuzzer:      libFuzzer (part of clang)"
-	@echo "  Compiler:    clang with -fsanitize=fuzzer,address"
-	@echo "  Library:     $(LIBRARY_NAME) (with sanitizer instrumentation)"
-	@echo "  Usage:       $(FUZZ_BUILD_DIR)/{{target_name}}-libfuzzer corpus/ -dict=dictionaries/{{target_name}}.dict"
-{{/if}}
-{{#if (eq default_fuzzer "afl")}}
-	@echo "  Fuzzer:      AFL++ (American Fuzzy Lop)"
-	@echo "  Compiler:    afl-clang-fast with -fsanitize=address"  
-	@echo "  Library:     $(LIBRARY_NAME) (with sanitizer instrumentation)"
-	@echo "  Usage:       afl-fuzz -i testsuite -o findings -- $(FUZZ_BUILD_DIR)/{{target_name}}-afl"
-{{/if}}
-{{#if (eq default_fuzzer "honggfuzz")}}
-	@echo "  Fuzzer:      HonggFuzz"
-	@echo "  Compiler:    hfuzz-clang with -fsanitize=address"
-	@echo "  Library:     $(LIBRARY_NAME) (with sanitizer instrumentation)"
-	@echo "  Usage:       honggfuzz -i testsuite/ -W corpus/ -- $(FUZZ_BUILD_DIR)/{{target_name}}-honggfuzz"
-{{/if}}
-{{#if (eq default_fuzzer "standalone")}}
-	@echo "  Fuzzer:      Standalone (no fuzzer engine)"
-	@echo "  Compiler:    clang with -fsanitize=address"
-	@echo "  Library:     $(LIBRARY_NAME) (with sanitizer instrumentation)"
-	@echo "  Usage:       $(FUZZ_BUILD_DIR)/{{target_name}}-standalone testsuite/ or echo 'input' | $(FUZZ_BUILD_DIR)/{{target_name}}-standalone"
-{{/if}}
+	@echo "Fuzzer targets:"
+	@echo "  make libfuzzer       - Build libFuzzer target (requires clang++)"
+	@echo "  make afl             - Build AFL target"  
+	@echo "  make honggfuzz       - Build HonggFuzz target (requires honggfuzz)"
+	@echo "  make standalone      - Build standalone binary"
 	@echo ""
-{{#if (eq integration "make")}}
-	@echo "Integration: Makefile (parent Makefile builds library automatically)"
+	@echo "Run fuzzers:"
+	@echo "  make run-libfuzzer   - Run libFuzzer"
+	@echo "  make run-afl         - Run AFL"
+	@echo "  make run-standalone  - Run standalone test"
+	@echo ""
+	@echo "Utilities:"
+	@echo "  make check-environment - Show detected environment"
+	@echo "  make check-library     - Verify library availability"
+	@echo "  make clean             - Remove build artifacts"
+	@echo ""
+{{#if minimal}}
+	@echo "Minimal mode: Edit src/{{target_name}}.cpp to integrate with your code"
 {{else}}
-	@echo "Integration: {{integration}}"
+	@echo "Library: $(LIBRARY_PATH)"
 {{/if}}
-	@echo "See INTEGRATION.md for detailed setup instructions."
-
-.PHONY: all {{default_fuzzer}} run test clean check-library help

@@ -3,29 +3,32 @@
 
 cmake_minimum_required(VERSION 3.10)
 
-# Test executable
-add_executable(test_{{project_name}} test_lib.c)
+# Create safe target names (replace slashes with underscores)
+string(REPLACE "/" "_" PROJECT_TARGET_NAME "{{project_name}}")
 
-# Link against the main library
-target_link_libraries(test_{{project_name}} {{project_name}}_lib)
+# Test executable
+add_executable(test_${PROJECT_TARGET_NAME} test_lib.cpp)
+
+# Link against the main library  
+target_link_libraries(test_${PROJECT_TARGET_NAME} ${PROJECT_TARGET_NAME})
 
 # Include directories
-target_include_directories(test_{{project_name}} PRIVATE ../include)
+target_include_directories(test_${PROJECT_TARGET_NAME} PRIVATE ../include)
 
 # Compiler flags for tests
-target_compile_options(test_{{project_name}} PRIVATE -g -O0 -Wall -Wextra -std=c99)
+target_compile_options(test_${PROJECT_TARGET_NAME} PRIVATE -g -O0 -Wall -Wextra -std=c++11)
 
 # Custom test target
 add_custom_target(run_tests
-    COMMAND test_{{project_name}}
-    DEPENDS test_{{project_name}}
+    COMMAND test_${PROJECT_TARGET_NAME}
+    DEPENDS test_${PROJECT_TARGET_NAME}
     COMMENT "Running unit tests"
     VERBATIM
 )
 
 # Enable CTest integration
 enable_testing()
-add_test(NAME lib_tests COMMAND test_{{project_name}})
+add_test(NAME lib_tests COMMAND test_${PROJECT_TARGET_NAME})
 
 # Set test properties
 set_tests_properties(lib_tests PROPERTIES

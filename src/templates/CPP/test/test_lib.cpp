@@ -1,8 +1,10 @@
 {{#unless minimal}}
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
+#include <iostream>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cassert>
+#include <string>
 #include "lib.h"
 
 // Simple test framework macros
@@ -13,12 +15,12 @@ static int tests_run = 0;
 static int tests_passed = 0;
 
 #define RUN_TEST(test) do { \
-    printf("Running %s... ", #test); \
+    std::cout << "Running " << #test << "... "; \
     if (test() == TEST_PASSED) { \
-        printf("PASSED\n"); \
+        std::cout << "PASSED" << std::endl; \
         tests_passed++; \
     } else { \
-        printf("FAILED\n"); \
+        std::cout << "FAILED" << std::endl; \
     } \
     tests_run++; \
 } while(0)
@@ -107,14 +109,14 @@ int test_string_modification() {
     if (result != 0) return TEST_FAILED;
     
     // Input should be modified (comma replaced with null terminator)
-    if (strcmp(input, original) == 0) return TEST_FAILED;  // Should be different
-    if (strcmp(input, "8") != 0) return TEST_FAILED;       // First part should be "8"
+    if (std::strcmp(input, original) == 0) return TEST_FAILED;  // Should be different
+    if (std::strcmp(input, "8") != 0) return TEST_FAILED;       // First part should be "8"
     
     return TEST_PASSED;
 }
 
 int main() {
-    printf("=== {{project_name}} Library Test Suite ===\n\n");
+    std::cout << "=== {{project_name}} Library Test Suite ===" << std::endl << std::endl;
     
     // Run all tests
     RUN_TEST(test_process_valid_input);
@@ -125,16 +127,16 @@ int main() {
     RUN_TEST(test_string_modification);
     
     // Print summary
-    printf("\n=== Test Results ===\n");
-    printf("Tests run: %d\n", tests_run);
-    printf("Tests passed: %d\n", tests_passed);
-    printf("Tests failed: %d\n", tests_run - tests_passed);
+    std::cout << std::endl << "=== Test Results ===" << std::endl;
+    std::cout << "Tests run: " << tests_run << std::endl;
+    std::cout << "Tests passed: " << tests_passed << std::endl;
+    std::cout << "Tests failed: " << (tests_run - tests_passed) << std::endl;
     
     if (tests_passed == tests_run) {
-        printf("✅ All tests passed!\n");
+        std::cout << "✅ All tests passed!" << std::endl;
         return 0;
     } else {
-        printf("❌ Some tests failed!\n");
+        std::cout << "❌ Some tests failed!" << std::endl;
         return 1;
     }
 }

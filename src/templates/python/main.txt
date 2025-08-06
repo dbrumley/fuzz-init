@@ -1,6 +1,0 @@
-# {{project_name}} fuzz target in Python
-def main():
-    print("Fuzzing project: {{project_name}}")
-
-if __name__ == "__main__":
-    main()

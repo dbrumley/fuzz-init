@@ -119,7 +119,8 @@ Runs comprehensive testing of template configurations:\n\
   - Uses temporary directories for isolated testing\n\n\
 Examples:\n\
   - fuzz-init --dev-mode --language C\n\
-  - fuzz-init --dev-mode --language C --watch src/templates/C/"
+  - fuzz-init --dev-mode --language C --watch
+  - fuzz-init --dev-mode --language CPP --watch src/templates/CPP/"
     )]
     pub dev_mode: bool,
 
@@ -131,9 +132,11 @@ Examples:\n\
 Monitors template files and re-runs validation when changes detected.\n\
 Must be used with --dev-mode.\n\n\
 Examples:\n\
-  - --watch src/templates/C/\n\
+  - --watch                     (auto-detects based on --language)\n\
+  - --watch src/templates/C/    (explicit path)\n\
   - --watch /path/to/custom/template/"
     )]
+    #[arg(num_args = 0..=1, default_missing_value = "auto")]
     pub watch: Option<String>,
 
     #[arg(

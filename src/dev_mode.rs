@@ -80,10 +80,19 @@ pub async fn run_dev_mode(args: &Args) -> Result<()> {
 
     // If watch mode is enabled, start file watching
     if let Some(watch_path) = &args.watch {
-        println!("\n👀 Watching {} for changes...", watch_path);
+        // If watch path is "auto" and we have a language, use the template directory
+        let actual_watch_path = if watch_path == "auto" && args.language.is_some() {
+            format!("src/templates/{}/", args.language.as_ref().unwrap())
+        } else if watch_path == "auto" && args.language.is_none() {
+            return Err(anyhow!("--watch without path requires --language to be specified"));
+        } else {
+            watch_path.clone()
+        };
+        
+        println!("\n👀 Watching {} for changes...", actual_watch_path);
         println!("Press Ctrl+C to exit");
 
-        start_file_watcher(watch_path, args, session).await?;
+        start_file_watcher(&actual_watch_path, args, session).await?;
     } else {
         // Just run once and exit
         print_final_report(&session);

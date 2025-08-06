@@ -1,375 +1,387 @@
-# CMake configuration for fuzzing {{project_name}} with {{default_fuzzer}}
-# This CMakeLists.txt is optimized for your chosen fuzzer and integration
+# Universal CMake fuzzing configuration for {{project_name}}
+# Links against standard lib{{project_name}}.a with intelligent fuzzer detection
 
 cmake_minimum_required(VERSION 3.16)
+# Convert project name with slashes to valid CMake identifier  
+string(REPLACE "/" "_" CMAKE_PROJECT_NAME "{{project_name}}")
+project(${CMAKE_PROJECT_NAME}-fuzz C CXX)
 
-{{#if (eq default_fuzzer "libfuzzer")}}
-# libFuzzer requires clang++ - auto-detect if not specified
-if(NOT DEFINED CMAKE_CXX_COMPILER)
-    find_program(CLANG_CXX clang++
-        DOC "Clang C++ compiler for libFuzzer")
-    if(CLANG_CXX)
-        set(CMAKE_CXX_COMPILER ${CLANG_CXX})
-        message(STATUS "Auto-detected clang++ for libFuzzer: ${CLANG_CXX}")
-    else()
-        message(FATAL_ERROR "libFuzzer requires clang++. Please install clang or set CMAKE_CXX_COMPILER=clang++")
-    endif()
-endif()
-{{/if}}
-
-{{#if (eq default_fuzzer "afl")}}
-# AFL configuration - find best available AFL++ C++ compiler
-if(NOT DEFINED CMAKE_CXX_COMPILER)
-    find_program(AFL_CXX_COMPILER 
-        NAMES afl-clang-fast++ afl-clang++ afl-g++
-        DOC "AFL++ C++ compiler wrapper")
-    if(AFL_CXX_COMPILER)
-        set(CMAKE_CXX_COMPILER ${AFL_CXX_COMPILER})
-        message(STATUS "Auto-detected AFL compiler: ${AFL_CXX_COMPILER}")
-    else()
-        message(FATAL_ERROR "AFL fuzzing requires AFL++. Please install AFL++ or set CMAKE_CXX_COMPILER=afl-clang-fast++")
-    endif()
-endif()
-{{/if}}
-
-{{#if (eq default_fuzzer "honggfuzz")}}
-# HonggFuzz configuration - find best available HonggFuzz compiler
-if(NOT DEFINED CMAKE_CXX_COMPILER)
-    find_program(HFUZZ_CXX_COMPILER 
-        NAMES hfuzz-clang++ clang++
-        DOC "HonggFuzz C++ compiler")
-    if(HFUZZ_CXX_COMPILER)
-        set(CMAKE_CXX_COMPILER ${HFUZZ_CXX_COMPILER})
-        message(STATUS "Auto-detected HonggFuzz compiler: ${HFUZZ_CXX_COMPILER}")
-    else()
-        message(FATAL_ERROR "HonggFuzz requires clang++. Please install HonggFuzz or clang++")
-    endif()
-endif()
-{{/if}}
-
-project({{project_name}}-fuzz-{{default_fuzzer}})
-
-# Set C++ standard
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Set default build type to Debug for fuzzing
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Debug)
+# =============================================================================
+# Environment Detection
+# =============================================================================
+
+# Detect fuzzing tools availability
+find_program(CLANG_CXX clang++ DOC "Clang C++ compiler for libFuzzer")
+find_program(AFL_CXX NAMES afl-clang-fast++ afl-clang++ DOC "AFL C++ compiler wrapper")
+find_program(HFUZZ_CXX hfuzz-clang++ DOC "HonggFuzz C++ compiler wrapper")
+
+# Set boolean flags
+if(CLANG_CXX)
+    set(HAVE_CLANG TRUE)
+else()
+    set(HAVE_CLANG FALSE)
 endif()
 
-{{#if (eq default_fuzzer "libfuzzer")}}
-# Verify libFuzzer compiler was detected correctly
-if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    message(FATAL_ERROR "libFuzzer requires clang++, but got ${CMAKE_CXX_COMPILER_ID} compiler: ${CMAKE_CXX_COMPILER}")
+if(AFL_CXX)
+    set(HAVE_AFL TRUE)
+else()
+    set(HAVE_AFL FALSE)
 endif()
 
-# libFuzzer configuration
-set(FUZZER_NAME "libFuzzer")
-set(TARGET_NAME "{{target_name}}_libfuzzer")
-set(FUZZER_FLAGS "-fsanitize=fuzzer,address")
-set(LIBRARY_NAME "{{project_name}}-libfuzzer")
-set(FUZZER_DEFINE "DFUZZER_TYPE_LIBFUZZER")
-
-# libFuzzer doesn't need driver (provides its own main)
-set(FUZZ_SOURCES "src/{{target_name}}.cpp")
-{{/if}}
-
-{{#if (eq default_fuzzer "afl")}}
-# Verify AFL compiler was detected correctly
-if(NOT CMAKE_CXX_COMPILER_ID MATCHES "AFL|Clang")
-    message(FATAL_ERROR "AFL requires AFL++ or clang++, but got ${CMAKE_CXX_COMPILER_ID} compiler: ${CMAKE_CXX_COMPILER}")
+if(HFUZZ_CXX)
+    set(HAVE_HFUZZ TRUE)
+else()
+    set(HAVE_HFUZZ FALSE)
 endif()
 
-set(FUZZER_NAME "AFL++")
-set(TARGET_NAME "{{target_name}}_afl")
-set(FUZZER_FLAGS "-fsanitize=address")
-set(LIBRARY_NAME "{{project_name}}-afl")
-set(FUZZER_DEFINE "DFUZZER_TYPE_AFL")
+# =============================================================================
+# Library Path Configuration
+# =============================================================================
 
-# AFL needs the universal driver
-set(FUZZ_SOURCES "src/{{target_name}}.cpp" "driver/main.c")
-{{/if}}
+{{#unless minimal}}
+# Create safe target names (replace slashes with underscores)
+string(REPLACE "/" "_" PROJECT_TARGET_NAME "{{project_name}}")
 
-{{#if (eq default_fuzzer "honggfuzz")}}
-# Verify HonggFuzz compiler was detected correctly
-if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    message(FATAL_ERROR "HonggFuzz requires clang++, but got ${CMAKE_CXX_COMPILER_ID} compiler: ${CMAKE_CXX_COMPILER}")
+# Full mode - library targets should be available from parent
+set(INCLUDES ../include)
+set(LIBRARY_TARGET ${PROJECT_TARGET_NAME}_fuzz)
+set(STANDALONE_TARGET ${PROJECT_TARGET_NAME}_standalone)
+set(INTEGRATION_MODE "library")
+{{else}}
+# Create safe target names (replace slashes with underscores)
+string(REPLACE "/" "_" PROJECT_TARGET_NAME "{{project_name}}")
+
+# Minimal mode - try to discover user's existing library
+set(INCLUDES ./include ../include)
+
+# Try to find user's library files
+file(GLOB_RECURSE DETECTED_LIBS 
+    RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/..
+    "../lib*.a"
+    "../build/lib*.a"
+    "../build/*/lib*.a"
+)
+
+# Filter out fuzz directory libraries
+list(FILTER DETECTED_LIBS EXCLUDE REGEX "fuzz/")
+
+if(DETECTED_LIBS)
+    list(GET DETECTED_LIBS 0 DETECTED_LIB)
+    get_filename_component(DETECTED_LIB_PATH "../${DETECTED_LIB}" ABSOLUTE)
+    get_filename_component(DETECTED_LIB_NAME ${DETECTED_LIB} NAME_WE)
+    set(INTEGRATION_MODE "library")
+    message(STATUS "Found user library: ${DETECTED_LIB_PATH}")
+else()
+    set(INTEGRATION_MODE "standalone")
+    message(STATUS "No user library found - using standalone mode")
+endif()
+{{/unless}}
+
+# =============================================================================
+# Source Files
+# =============================================================================
+
+set(FUZZ_HARNESS_SRC src/{{target_name}}.cpp)
+set(DRIVER_SRC driver/main.c)
+
+# =============================================================================
+# Include Directories
+# =============================================================================
+
+include_directories(${INCLUDES})
+
+# =============================================================================
+# Compiler Configuration
+# =============================================================================
+
+# Common flags for fuzzer harnesses
+set(COMMON_CXX_FLAGS -g -O2 -Wall -Wextra)
+set(COMMON_C_FLAGS -g -O2 -Wall -Wextra)
+
+# Sanitizer flags when clang is available
+if(HAVE_CLANG)
+    set(SANITIZER_FLAGS -fsanitize=address,undefined)
+else()
+    set(SANITIZER_FLAGS "")
 endif()
 
-set(FUZZER_NAME "HonggFuzz")
-set(TARGET_NAME "{{target_name}}_honggfuzz")
-set(FUZZER_FLAGS "-fsanitize=address")
-set(LIBRARY_NAME "{{project_name}}-honggfuzz")
-set(FUZZER_DEFINE "DFUZZER_TYPE_HONGGFUZZ")
+# =============================================================================
+# libFuzzer Target
+# =============================================================================
 
-# HonggFuzz needs the universal driver
-set(FUZZ_SOURCES "src/{{target_name}}.cpp" "driver/main.c")
-{{/if}}
+add_executable(${PROJECT_TARGET_NAME}-libfuzzer ${FUZZ_HARNESS_SRC})
 
-{{#if (eq default_fuzzer "standalone")}}
-# Standalone fuzzing configuration
-if(NOT CMAKE_CXX_COMPILER MATCHES "clang")
-    message(WARNING "clang++ recommended for better fuzzing support, but other compilers may work")
-endif()
-
-set(FUZZER_NAME "Standalone")
-set(TARGET_NAME "{{target_name}}_standalone")
-set(FUZZER_FLAGS "-fsanitize=address")
-set(LIBRARY_NAME "{{project_name}}-fuzz")
-set(FUZZER_DEFINE "DFUZZER_TYPE_STANDALONE")
-
-# Standalone needs the universal driver
-set(FUZZ_SOURCES "src/{{target_name}}.cpp" "driver/main.c")
-{{/if}}
-
-# Common compiler flags optimized for fuzzing
-set(COMMON_FLAGS -g -O2 -Wall -Wextra)
-
-# Include directories - adjust to match your project
-include_directories(../include)
-
-# Smart library detection for existing projects
-{{#if (eq integration "cmake")}}
-# For CMake integration, intelligently detect existing targets
-set(LIBRARY_TARGET_FOUND FALSE)
-
-# Helper function to validate target type (libraries only)
-function(is_library_target target_name result_var)
-    if(TARGET ${target_name})
-        get_target_property(target_type ${target_name} TYPE)
-        if(target_type STREQUAL "STATIC_LIBRARY" OR target_type STREQUAL "SHARED_LIBRARY")
-            set(${result_var} TRUE PARENT_SCOPE)
-        else()
-            set(${result_var} FALSE PARENT_SCOPE)
-        endif()
-    else()
-        set(${result_var} FALSE PARENT_SCOPE)
-    endif()
-endfunction()
-
-# Priority 1: Check for fuzzer-specific library (ideal for full mode)
-set(FUZZER_SPECIFIC_TARGET "{{project_name}}-{{default_fuzzer}}")
-is_library_target(${FUZZER_SPECIFIC_TARGET} IS_FUZZER_LIB)
-if(IS_FUZZER_LIB)
-    set(REQUIRED_LIBRARY_TARGET "${FUZZER_SPECIFIC_TARGET}")
-    set(LIBRARY_TARGET_FOUND TRUE)
-    message(STATUS "✓ Found fuzzer-specific library: ${REQUIRED_LIBRARY_TARGET}")
-
-# Priority 2: Check for general library naming patterns (libraries only)
-elseif(TARGET {{project_name}}_lib)
-    is_library_target("{{project_name}}_lib" IS_LIB)
-    if(IS_LIB)
-        set(REQUIRED_LIBRARY_TARGET "{{project_name}}_lib")
-        set(LIBRARY_TARGET_FOUND TRUE)
-        message(STATUS "✓ Found library target: ${REQUIRED_LIBRARY_TARGET}")
-    endif()
-elseif(TARGET lib{{project_name}})
-    is_library_target("lib{{project_name}}" IS_LIB)
-    if(IS_LIB)
-        set(REQUIRED_LIBRARY_TARGET "lib{{project_name}}")
-        set(LIBRARY_TARGET_FOUND TRUE)
-        message(STATUS "✓ Found library target: ${REQUIRED_LIBRARY_TARGET}")
-    endif()
-
-# Priority 3: Check project name (but only if it's a library, not executable)
-elseif(TARGET {{project_name}})
-    is_library_target("{{project_name}}" IS_LIB)
-    if(IS_LIB)
-        set(REQUIRED_LIBRARY_TARGET "{{project_name}}")
-        set(LIBRARY_TARGET_FOUND TRUE)
-        message(STATUS "✓ Found project library: ${REQUIRED_LIBRARY_TARGET}")
-    else()
-        message(STATUS "Found {{project_name}} but it's not a library (skipping)")
-    endif()
-endif()
-
-# Priority 4: Auto-detect from available libraries
-if(NOT LIBRARY_TARGET_FOUND)
-    # Get all targets and filter for libraries only
-    get_property(all_targets DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY BUILDSYSTEM_TARGETS)
-    set(library_targets)
-    foreach(target ${all_targets})
-        get_target_property(target_type ${target} TYPE)
-        if(target_type STREQUAL "STATIC_LIBRARY" OR target_type STREQUAL "SHARED_LIBRARY")
-            list(APPEND library_targets ${target})
-        endif()
-    endforeach()
+if(HAVE_CLANG)
+    # Use clang++ for libFuzzer (required)
+    set_target_properties(${PROJECT_TARGET_NAME}-libfuzzer PROPERTIES
+        CXX_COMPILER ${CLANG_CXX}
+    )
     
-    # If we found exactly one library, use it
-    list(LENGTH library_targets num_libraries)
-    if(num_libraries EQUAL 1)
-        list(GET library_targets 0 REQUIRED_LIBRARY_TARGET)
-        set(LIBRARY_TARGET_FOUND TRUE)
-        message(STATUS "✓ Auto-detected library target: ${REQUIRED_LIBRARY_TARGET}")
-    elseif(num_libraries GREATER 1)
-        message(STATUS "Multiple library targets found: ${library_targets}")
-        # Try to pick the best one (fuzzer-specific or main library)
-        foreach(lib_target ${library_targets})
-            if(lib_target MATCHES ".*-{{default_fuzzer}}$")
-                set(REQUIRED_LIBRARY_TARGET "${lib_target}")
-                set(LIBRARY_TARGET_FOUND TRUE)
-                message(STATUS "✓ Selected fuzzer-specific library: ${REQUIRED_LIBRARY_TARGET}")
-                break()
-            endif()
-        endforeach()
-        if(NOT LIBRARY_TARGET_FOUND)
-            list(GET library_targets 0 REQUIRED_LIBRARY_TARGET)
-            set(LIBRARY_TARGET_FOUND TRUE)
-            message(STATUS "✓ Selected first library target: ${REQUIRED_LIBRARY_TARGET}")
-            message(STATUS "Other available libraries: ${library_targets}")
-        endif()
+    target_compile_options(${PROJECT_TARGET_NAME}-libfuzzer PRIVATE 
+        ${COMMON_CXX_FLAGS} ${SANITIZER_FLAGS}
+    )
+    
+    target_link_options(${PROJECT_TARGET_NAME}-libfuzzer PRIVATE 
+        ${SANITIZER_FLAGS} -fsanitize=fuzzer
+    )
+    
+    # Link against appropriate library
+{{#unless minimal}}
+    if(TARGET ${LIBRARY_TARGET})
+        target_link_libraries(${PROJECT_TARGET_NAME}-libfuzzer ${LIBRARY_TARGET})
+    else()
+        message(FATAL_ERROR "Library target ${LIBRARY_TARGET} not found. Build parent project first.")
     endif()
-endif()
-
-# If no target found, fall back to the expected fuzzing library name
-if(NOT LIBRARY_TARGET_FOUND)
-    set(REQUIRED_LIBRARY_TARGET "${LIBRARY_NAME}")
-    message(WARNING "No existing library target found. Expecting: ${REQUIRED_LIBRARY_TARGET}")
-    message(STATUS "If your library has a different name, please edit REQUIRED_LIBRARY_TARGET in this CMakeLists.txt")
-endif()
 {{else}}
-# For other integrations, check for library file
-set(REQUIRED_LIBRARY "../lib${LIBRARY_NAME}.a")
-if(NOT EXISTS ${REQUIRED_LIBRARY})
-    message(WARNING 
-        "Required fuzzing library not found: ${REQUIRED_LIBRARY}\n"
-        "Please run 'make lib-{{#if (eq default_fuzzer "standalone")}}fuzz{{else}}{{default_fuzzer}}{{/if}}' in the parent directory first.\n"
-        "This ensures consistent sanitizer instrumentation between your project and fuzz harness.")
+    if(INTEGRATION_MODE STREQUAL "library" AND EXISTS ${DETECTED_LIB_PATH})
+        target_link_libraries(${PROJECT_TARGET_NAME}-libfuzzer ${DETECTED_LIB_PATH})
+    endif()
+{{/unless}}
+    
+    message(STATUS "✅ libFuzzer target configured")
 else()
-    message(STATUS "✓ Found required library: ${REQUIRED_LIBRARY}")
-endif()
-{{/if}}
-
-# Create the {{default_fuzzer}} fuzzer target
-add_executable(${TARGET_NAME} ${FUZZ_SOURCES})
-
-# Set compiler flags and definitions
-target_compile_options(${TARGET_NAME} PRIVATE ${COMMON_FLAGS} ${FUZZER_FLAGS})
-target_compile_definitions(${TARGET_NAME} PRIVATE ${FUZZER_DEFINE})
-
-# Link against the fuzzing library
-{{#if (eq integration "cmake")}}
-# Only link if library target is found or we're in full mode
-if(LIBRARY_TARGET_FOUND)
-    target_link_libraries(${TARGET_NAME} PRIVATE ${REQUIRED_LIBRARY_TARGET})
-endif()
-{{else}}
-# For non-cmake integrations, only link if library exists
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${REQUIRED_LIBRARY})
-    target_link_libraries(${TARGET_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/${REQUIRED_LIBRARY})
-endif()
-{{/if}}
-
-# Set linker flags for sanitizers
-target_link_options(${TARGET_NAME} PRIVATE ${FUZZER_FLAGS})
-
-# Custom target for running the fuzzer
-{{#if (eq default_fuzzer "standalone")}}
-add_custom_target(run-fuzzer
-    COMMAND ./${TARGET_NAME} ../testsuite/
-    DEPENDS ${TARGET_NAME}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMENT "Running standalone fuzzer on test suite"
-)
-{{/if}}
-
-{{#if (eq default_fuzzer "afl")}}
-# Find AFL runner
-find_program(AFL_FUZZ afl-fuzz)
-if(AFL_FUZZ)
-    add_custom_target(run-fuzzer
-        COMMAND ${CMAKE_COMMAND} -E make_directory findings
-        COMMAND ${AFL_FUZZ} -i ../testsuite -o findings -- ./${TARGET_NAME}
-        DEPENDS ${TARGET_NAME}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Running AFL fuzzer"
+    # No clang++ found - create a target that fails with helpful message
+    add_custom_target(libfuzzer-error
+        COMMAND ${CMAKE_COMMAND} -E echo "❌ libFuzzer requires clang++ but only found: ${CMAKE_CXX_COMPILER}"
+        COMMAND ${CMAKE_COMMAND} -E echo "💡 Install clang: sudo apt install clang (Ubuntu) or xcode-select --install (macOS)"
+        COMMAND ${CMAKE_COMMAND} -E false
+        COMMENT "libFuzzer requires clang++"
     )
-else()
-    message(STATUS "afl-fuzz not found, run-fuzzer target will not be available")
+    add_dependencies(${PROJECT_TARGET_NAME}-libfuzzer libfuzzer-error)
 endif()
-{{/if}}
 
-{{#if (eq default_fuzzer "libfuzzer")}}
-add_custom_target(run-fuzzer
-    COMMAND ${CMAKE_COMMAND} -E make_directory corpus
-    COMMAND ./${TARGET_NAME} corpus/ -dict=../dictionaries/{{target_name}}.dict -max_total_time=300
-    DEPENDS ${TARGET_NAME}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMENT "Running libFuzzer"
+# Create libfuzzer alias target
+add_custom_target(libfuzzer DEPENDS ${PROJECT_TARGET_NAME}-libfuzzer)
+
+# =============================================================================
+# AFL Target
+# =============================================================================
+
+add_executable(${PROJECT_TARGET_NAME}-afl ${FUZZ_HARNESS_SRC} ${DRIVER_SRC})
+
+# Choose AFL compiler: AFL++ > clang++ > g++
+if(HAVE_AFL)
+    set(AFL_COMPILER ${AFL_CXX})
+    set(AFL_C_COMPILER afl-clang-fast)
+elseif(HAVE_CLANG)
+    set(AFL_COMPILER ${CLANG_CXX})
+    set(AFL_C_COMPILER clang)
+else()
+    set(AFL_COMPILER ${CMAKE_CXX_COMPILER})
+    set(AFL_C_COMPILER ${CMAKE_C_COMPILER})
+endif()
+
+set_target_properties(${PROJECT_TARGET_NAME}-afl PROPERTIES
+    CXX_COMPILER ${AFL_COMPILER}
+    C_COMPILER ${AFL_C_COMPILER}
 )
-{{/if}}
 
-{{#if (eq default_fuzzer "honggfuzz")}}
-# Find HonggFuzz runner
-find_program(HONGGFUZZ honggfuzz)
-if(HONGGFUZZ)
-    add_custom_target(run-fuzzer
-        COMMAND ${CMAKE_COMMAND} -E make_directory corpus
-        COMMAND ${HONGGFUZZ} -i ../testsuite/ -W corpus/ -- ./${TARGET_NAME}
-        DEPENDS ${TARGET_NAME}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Running HonggFuzz"
-    )
-else()
-    message(STATUS "honggfuzz not found, run-fuzzer target will not be available")
+target_compile_options(${PROJECT_TARGET_NAME}-afl PRIVATE 
+    ${COMMON_CXX_FLAGS} ${SANITIZER_FLAGS}
+)
+
+if(SANITIZER_FLAGS)
+    target_link_options(${PROJECT_TARGET_NAME}-afl PRIVATE ${SANITIZER_FLAGS})
 endif()
-{{/if}}
 
-# Test target - builds and runs basic smoke test
-add_custom_target(test-fuzzer
-{{#if (eq default_fuzzer "libfuzzer")}}
-    COMMAND ./${TARGET_NAME} ../testsuite/ -runs=10
+# Link against appropriate library
+{{#unless minimal}}
+if(TARGET ${LIBRARY_TARGET})
+    target_link_libraries(${PROJECT_TARGET_NAME}-afl ${LIBRARY_TARGET})
+elseif(TARGET ${STANDALONE_TARGET})
+    target_link_libraries(${PROJECT_TARGET_NAME}-afl ${STANDALONE_TARGET})
+    message(STATUS "⚠️  Linking AFL with standalone library (no sanitizers)")
+else()
+    message(FATAL_ERROR "No library target available for AFL")
+endif()
 {{else}}
-    COMMAND echo "FUZZ" | ./${TARGET_NAME}
-{{/if}}
-    DEPENDS ${TARGET_NAME}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMENT "Running smoke test with ${FUZZER_NAME}"
+if(INTEGRATION_MODE STREQUAL "library" AND EXISTS ${DETECTED_LIB_PATH})
+    target_link_libraries(${PROJECT_TARGET_NAME}-afl ${DETECTED_LIB_PATH})
+endif()
+{{/unless}}
+
+add_custom_target(afl DEPENDS ${PROJECT_TARGET_NAME}-afl)
+message(STATUS "✅ AFL target configured")
+
+# =============================================================================
+# HonggFuzz Target
+# =============================================================================
+
+if(HAVE_HFUZZ)
+    add_executable(${PROJECT_TARGET_NAME}-honggfuzz ${FUZZ_HARNESS_SRC} ${DRIVER_SRC})
+    
+    set_target_properties(${PROJECT_TARGET_NAME}-honggfuzz PROPERTIES
+        CXX_COMPILER ${HFUZZ_CXX}
+    )
+    
+    target_compile_options(${PROJECT_TARGET_NAME}-honggfuzz PRIVATE 
+        ${COMMON_CXX_FLAGS} ${SANITIZER_FLAGS}
+    )
+    
+    if(SANITIZER_FLAGS)
+        target_link_options(${PROJECT_TARGET_NAME}-honggfuzz PRIVATE ${SANITIZER_FLAGS})
+    endif()
+    
+    # Link against appropriate library
+{{#unless minimal}}
+    if(TARGET ${LIBRARY_TARGET})
+        target_link_libraries(${PROJECT_TARGET_NAME}-honggfuzz ${LIBRARY_TARGET})
+    else()
+        message(FATAL_ERROR "Library target ${LIBRARY_TARGET} not found")
+    endif()
+{{else}}
+    if(INTEGRATION_MODE STREQUAL "library" AND EXISTS ${DETECTED_LIB_PATH})
+        target_link_libraries(${PROJECT_TARGET_NAME}-honggfuzz ${DETECTED_LIB_PATH})
+    endif()
+{{/unless}}
+    
+    add_custom_target(honggfuzz DEPENDS ${PROJECT_TARGET_NAME}-honggfuzz)
+    message(STATUS "✅ HonggFuzz target configured")
+else()
+    # HonggFuzz not found - create error target
+    add_custom_target(honggfuzz
+        COMMAND ${CMAKE_COMMAND} -E echo "❌ HonggFuzz not found. Install: apt install honggfuzz"
+        COMMAND ${CMAKE_COMMAND} -E false
+        COMMENT "HonggFuzz not available"
+    )
+endif()
+
+# =============================================================================
+# Standalone Target
+# =============================================================================
+
+add_executable(${PROJECT_TARGET_NAME}-standalone ${FUZZ_HARNESS_SRC} ${DRIVER_SRC})
+
+target_compile_options(${PROJECT_TARGET_NAME}-standalone PRIVATE ${COMMON_CXX_FLAGS})
+
+# Link against standalone library (no sanitizers)
+{{#unless minimal}}
+if(TARGET ${STANDALONE_TARGET})
+    target_link_libraries(${PROJECT_TARGET_NAME}-standalone ${STANDALONE_TARGET})
+else()
+    message(FATAL_ERROR "Standalone library target ${STANDALONE_TARGET} not found")
+endif()
+{{else}}
+if(INTEGRATION_MODE STREQUAL "library" AND EXISTS ${DETECTED_LIB_PATH})
+    target_link_libraries(${PROJECT_TARGET_NAME}-standalone ${DETECTED_LIB_PATH})
+endif()
+{{/unless}}
+
+add_custom_target(standalone DEPENDS ${PROJECT_TARGET_NAME}-standalone)
+message(STATUS "✅ Standalone target configured")
+
+# =============================================================================
+# Testing Targets
+# =============================================================================
+
+# Test target - runs the best available fuzzer
+if(HAVE_CLANG)
+    set(TEST_TARGET ${PROJECT_TARGET_NAME}-libfuzzer)
+    set(TEST_COMMAND "${TEST_TARGET} testsuite/ -runs=10 -max_total_time=5")
+else()
+    set(TEST_TARGET ${PROJECT_TARGET_NAME}-standalone)
+    set(TEST_COMMAND "echo 'test input' | ${TEST_TARGET}")
+endif()
+
+add_custom_target(test
+    COMMAND ${CMAKE_COMMAND} -E echo "🧪 Testing ${TEST_TARGET}..."
+    COMMAND ${TEST_COMMAND}
+    COMMAND ${CMAKE_COMMAND} -E echo "✅ Test passed!"
+    DEPENDS ${TEST_TARGET}
+    COMMENT "Running fuzzer tests"
 )
 
-# Copy necessary files to build directory
-file(GLOB_RECURSE TESTSUITE_FILES "../testsuite/*")
-foreach(FILE ${TESTSUITE_FILES})
-    file(RELATIVE_PATH REL_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../testsuite ${FILE})
-    get_filename_component(REL_DIR ${REL_PATH} DIRECTORY)
-    file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/testsuite/${REL_DIR})
-    configure_file(${FILE} ${CMAKE_CURRENT_BINARY_DIR}/testsuite/${REL_PATH} COPYONLY)
-endforeach()
+# Individual test targets
+add_custom_target(test-libfuzzer
+    COMMAND ${PROJECT_TARGET_NAME}-libfuzzer testsuite/ -runs=10 -max_total_time=5
+    DEPENDS ${PROJECT_TARGET_NAME}-libfuzzer
+    COMMENT "Testing libFuzzer"
+)
 
-# Copy dictionary file if it exists
-file(GLOB DICT_FILES "../dictionaries/*.dict")
-foreach(DICT_FILE ${DICT_FILES})
-    get_filename_component(DICT_NAME ${DICT_FILE} NAME)
-    configure_file(${DICT_FILE} ${CMAKE_CURRENT_BINARY_DIR}/dictionaries/${DICT_NAME} COPYONLY)
-endforeach()
+add_custom_target(test-afl
+    COMMAND ${CMAKE_COMMAND} -E echo "test input" | ${PROJECT_TARGET_NAME}-afl
+    DEPENDS ${PROJECT_TARGET_NAME}-afl
+    COMMENT "Testing AFL target"
+)
 
-# Print build information
-message(STATUS "")
-message(STATUS "🎯 Fuzzing configuration for {{project_name}}:")
-message(STATUS "  Fuzzer:       ${FUZZER_NAME}")
-message(STATUS "  Target:       ${TARGET_NAME}")
-message(STATUS "  Compiler:     ${CMAKE_CXX_COMPILER}")
-message(STATUS "  Library:      ${REQUIRED_LIBRARY}")
-message(STATUS "  Integration:  {{integration}}")
-message(STATUS "")
-message(STATUS "📋 Available targets:")
-message(STATUS "  ${TARGET_NAME}  - Build the fuzzer")
-message(STATUS "  run-fuzzer     - Build and run the fuzzer")
-message(STATUS "  test-fuzzer    - Build and run smoke test")
-message(STATUS "")
-message(STATUS "🚀 Usage:")
-message(STATUS "  cmake --build . --target ${TARGET_NAME}")
-{{#if (eq default_fuzzer "libfuzzer")}}
-message(STATUS "  ./${TARGET_NAME} testsuite/ -dict=dictionaries/{{target_name}}.dict")
+add_custom_target(test-standalone
+    COMMAND ${CMAKE_COMMAND} -E echo "test input" | ${PROJECT_TARGET_NAME}-standalone
+    DEPENDS ${PROJECT_TARGET_NAME}-standalone
+    COMMENT "Testing standalone target"
+)
+
+# =============================================================================
+# Environment Information
+# =============================================================================
+
+add_custom_target(check-environment
+    COMMAND ${CMAKE_COMMAND} -E echo "🔍 Fuzzing environment:"
+    COMMAND ${CMAKE_COMMAND} -E echo "   Mode: {{#if minimal}}minimal{{else}}full{{/if}}"
+    COMMAND ${CMAKE_COMMAND} -E echo "   CXX Compiler: ${CMAKE_CXX_COMPILER}"
+    COMMAND ${CMAKE_COMMAND} -E echo "   Integration: ${INTEGRATION_MODE}"
+{{#unless minimal}}
+    COMMAND ${CMAKE_COMMAND} -E echo "   Library: ${LIBRARY_TARGET}"
+{{else}}
+    COMMAND ${CMAKE_COMMAND} -E echo "   Detected lib: ${DETECTED_LIB_PATH}"
+{{/unless}}
+    COMMAND ${CMAKE_COMMAND} -E echo "   clang++: ${HAVE_CLANG}"
+    COMMAND ${CMAKE_COMMAND} -E echo "   AFL++: ${HAVE_AFL}"
+    COMMAND ${CMAKE_COMMAND} -E echo "   HonggFuzz: ${HAVE_HFUZZ}"
+    COMMENT "Displaying environment information"
+)
+
+# =============================================================================
+# Library Validation
+# =============================================================================
+
+add_custom_target(check-library
+{{#unless minimal}}
+    COMMAND ${CMAKE_COMMAND} -E echo "✅ Full mode: Using parent project libraries"
+{{else}}
+    COMMAND ${CMAKE_COMMAND} -E echo "ℹ️  Minimal mode library check:"
+    COMMAND ${CMAKE_COMMAND} -E echo "   Integration: ${INTEGRATION_MODE}"
+    COMMAND ${CMAKE_COMMAND} -E echo "   Detected: ${DETECTED_LIB_PATH}"
+    COMMAND ${CMAKE_COMMAND} -E echo "🔄 To integrate with your library:"
+    COMMAND ${CMAKE_COMMAND} -E echo "   1. Build your library with sanitizer flags"
+    COMMAND ${CMAKE_COMMAND} -E echo "   2. Place it where we can find it (../lib{{project_name}}.a)"
+    COMMAND ${CMAKE_COMMAND} -E echo "   3. Edit src/{{target_name}}.cpp to call your functions"
+{{/unless}}
+    COMMENT "Checking library configuration"
+)
+
+# =============================================================================
+# Help Target
+# =============================================================================
+
+add_custom_target(fuzz-help-local
+    COMMAND ${CMAKE_COMMAND} -E echo "Universal CMake Fuzzing for {{project_name}}"
+    COMMAND ${CMAKE_COMMAND} -E echo ""
+    COMMAND ${CMAKE_COMMAND} -E echo "Quick start:"
+    COMMAND ${CMAKE_COMMAND} -E echo "  cmake --build . --target libfuzzer  - Build best fuzzer"
+    COMMAND ${CMAKE_COMMAND} -E echo "  cmake --build . --target test       - Build and test"
+    COMMAND ${CMAKE_COMMAND} -E echo ""
+    COMMAND ${CMAKE_COMMAND} -E echo "Fuzzer targets:"
+    COMMAND ${CMAKE_COMMAND} -E echo "  libfuzzer    - Build libFuzzer target (requires clang++)"
+    COMMAND ${CMAKE_COMMAND} -E echo "  afl          - Build AFL target"
+    COMMAND ${CMAKE_COMMAND} -E echo "  honggfuzz    - Build HonggFuzz target (requires honggfuzz)"
+    COMMAND ${CMAKE_COMMAND} -E echo "  standalone   - Build standalone binary"
+    COMMAND ${CMAKE_COMMAND} -E echo ""
+    COMMAND ${CMAKE_COMMAND} -E echo "Testing:"
+    COMMAND ${CMAKE_COMMAND} -E echo "  test         - Test best available fuzzer"
+    COMMAND ${CMAKE_COMMAND} -E echo "  test-libfuzzer - Test libFuzzer specifically"
+    COMMAND ${CMAKE_COMMAND} -E echo "  test-afl     - Test AFL specifically"
+    COMMAND ${CMAKE_COMMAND} -E echo "  test-standalone - Test standalone specifically"
+    COMMAND ${CMAKE_COMMAND} -E echo ""
+    COMMAND ${CMAKE_COMMAND} -E echo "Utilities:"
+    COMMAND ${CMAKE_COMMAND} -E echo "  check-environment - Show detected environment"
+    COMMAND ${CMAKE_COMMAND} -E echo "  check-library     - Verify library setup"
+    COMMAND ${CMAKE_COMMAND} -E echo "  fuzz-help-local  - Show this help"
+{{#if minimal}}
+    COMMAND ${CMAKE_COMMAND} -E echo ""
+    COMMAND ${CMAKE_COMMAND} -E echo "Minimal mode: Edit src/{{target_name}}.cpp to integrate with your code"
 {{/if}}
-{{#if (eq default_fuzzer "afl")}}
-message(STATUS "  afl-fuzz -i testsuite -o findings -- ./${TARGET_NAME}")
-{{/if}}
-{{#if (eq default_fuzzer "honggfuzz")}}
-message(STATUS "  honggfuzz -i testsuite/ -W corpus/ -- ./${TARGET_NAME}")
-{{/if}}
-{{#if (eq default_fuzzer "standalone")}}
-message(STATUS "  ./${TARGET_NAME} testsuite/")
-{{/if}}
-message(STATUS "")
+    COMMENT "Displaying help"
+)
