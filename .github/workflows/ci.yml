@@ -157,15 +157,15 @@ jobs:
           echo "Checking interactive mode output..."
           ls -la ./test-interactive-${{ matrix.language }}/
 
-      - name: Upload test artifacts
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: test-output-${{ matrix.language }}
-          path: |
-            test-output-${{ matrix.language }}/
-            test-minimal-${{ matrix.language }}/
-            test-interactive-${{ matrix.language }}/
+          - name: Upload test artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-output-${{ matrix.language }}
+        path: |
+          test-output-${{ matrix.language }}/
+          test-minimal-${{ matrix.language }}/
+          test-interactive-${{ matrix.language }}/
 
   # Test build system integration for C/C++ templates
   test-build-systems:
@@ -234,12 +234,12 @@ jobs:
             cd fuzz && chmod +x build.sh && ./build.sh
           fi
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: build-test-${{ matrix.language }}-${{ matrix.integration }}
-          path: test-build-${{ matrix.language }}-${{ matrix.integration }}/
+          - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: build-test-${{ matrix.language }}-${{ matrix.integration }}
+        path: test-build-${{ matrix.language }}-${{ matrix.integration }}/
 
   # Test fuzzer compatibility
   test-fuzzers:
@@ -311,12 +311,12 @@ jobs:
             ls -la *honggfuzz
           fi
 
-      - name: Upload fuzzer artifacts
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: fuzzer-test-${{ matrix.language }}-${{ matrix.fuzzer }}
-          path: test-fuzzer-${{ matrix.language }}-${{ matrix.fuzzer }}/
+          - name: Upload fuzzer artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: fuzzer-test-${{ matrix.language }}-${{ matrix.fuzzer }}
+        path: test-fuzzer-${{ matrix.language }}-${{ matrix.fuzzer }}/
 
   # Test CLI documentation generation
   test-docs:
@@ -347,11 +347,11 @@ jobs:
             exit 1
           fi
 
-      - name: Upload documentation
-        uses: actions/upload-artifact@v3
-        with:
-          name: cli-documentation
-          path: cli-reference.mdx
+          - name: Upload documentation
+      uses: actions/upload-artifact@v4
+      with:
+        name: cli-documentation
+        path: cli-reference.mdx
 
   # Test error handling and edge cases
   test-error-handling:

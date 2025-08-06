@@ -6,6 +6,8 @@ A CLI tool for scaffolding fuzzing projects that addresses common developer pain
 [![CI](https://github.com/dbrumley/fuzz-init/workflows/CI/badge.svg)](https://github.com/dbrumley/fuzz-init/actions)
 [![Quick Test](https://github.com/dbrumley/fuzz-init/workflows/Quick%20Test/badge.svg)](https://github.com/dbrumley/fuzz-init/actions)
 
+[![Star History Chart](https://api.star-history.com/svg?repos=dbrumley/fuzz-init&type=Date)](https://star-history.com/#dbrumley/fuzz-init&Date)
+
 ## Common Fuzzing Problems
 
 Setting up fuzzing infrastructure often involves:
