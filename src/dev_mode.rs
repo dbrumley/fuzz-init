@@ -23,7 +23,6 @@ pub struct TestResult {
     pub config: TestConfiguration,
     pub success: bool,
     pub duration: Duration,
-    pub output: String,
     pub error: Option<String>,
     pub build_log: String,
 }
@@ -291,7 +290,6 @@ async fn test_configuration(
         config: config.clone(),
         success,
         duration,
-        output: build_log.clone(),
         error: error_msg,
         build_log,
     })

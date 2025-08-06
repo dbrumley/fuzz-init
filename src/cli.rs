@@ -23,7 +23,7 @@ fn find_template_case_insensitive(
     about = "🚀 Scaffold fuzz harnesses using best practices fast",
     long_about = "🚀 Scaffold fuzz harnesses using best practices fast.\n\n\
   ✨ Features:\n\
-    - 🛠️ Languages: c, cpp, rust, python, ...\n\
+    - 🛠️ Languages: c, cpp, rust,  ...\n\
     - 🧱 Build systems: make, cmake, cargo, ...\n\
     - 🐛 Fuzzers: libfuzzer, afl, honggfuzz\n\
     - 📦 Templates: extend with custom templates from GitHub or local files\n\n\
@@ -150,12 +150,7 @@ Example:\n\
     pub dev_output: Option<String>,
 }
 
-pub fn get_project_name(args: &Args) -> anyhow::Result<String> {
-    match args.project.as_ref().or(args.project_name_pos.as_ref()) {
-        Some(name) => Ok(name.clone()),
-        None => Ok(Text::new("Project name:").prompt()?),
-    }
-}
+
 
 pub fn get_project_name_with_tracking(args: &Args) -> anyhow::Result<(String, bool)> {
     match args.project.as_ref().or(args.project_name_pos.as_ref()) {
@@ -167,55 +162,7 @@ pub fn get_project_name_with_tracking(args: &Args) -> anyhow::Result<(String, bo
     }
 }
 
-pub fn determine_template_source(
-    args: &Args,
-    available_templates: &[String],
-) -> anyhow::Result<TemplateSource> {
-    match (&args.language, &args.template) {
-        // Language specified - use local template
-        (Some(language), None) => {
-            if let Some(actual_template_name) = find_template_case_insensitive(language, available_templates) {
-                Ok(TemplateSource::Local(actual_template_name))
-            } else {
-                anyhow::bail!(
-                    "Invalid language '{}'. Available: {}",
-                    language,
-                    available_templates.join(", ")
-                );
-            }
-        }
-        // Template specified - use remote template
-        (None, Some(template)) => {
-            if template.starts_with("github:") {
-                Ok(TemplateSource::GitHubFull(template.clone()))
-            } else if template.starts_with('@') {
-                Ok(TemplateSource::GitHubFull(template.clone()))
-            } else {
-                // Treat as local template name with deprecation warning
-                // println!("⚠️  Using --template for local templates is deprecated. Use --language instead.");
-                if let Some(actual_template_name) = find_template_case_insensitive(template, available_templates) {
-                    Ok(TemplateSource::Local(actual_template_name))
-                } else {
-                    anyhow::bail!(
-                        "Invalid template '{}'. Available: {}",
-                        template,
-                        available_templates.join(", ")
-                    );
-                }
-            }
-        }
-        // Both specified - error
-        (Some(_), Some(_)) => {
-            anyhow::bail!("Cannot specify both --language and --template. Use --language for local templates or --template for remote templates.");
-        }
-        // Neither specified - prompt user
-        (None, None) => {
-            let selected =
-                Select::new("Choose a language", available_templates.to_vec()).prompt()?;
-            Ok(TemplateSource::Local(selected))
-        }
-    }
-}
+
 
 pub fn determine_template_source_with_tracking(
     args: &Args,
@@ -293,54 +240,7 @@ pub async fn get_template_name(
     }
 }
 
-pub fn select_fuzzer(args: &Args, metadata: Option<&TemplateMetadata>) -> anyhow::Result<String> {
-    if let Some(fuzzer) = &args.fuzzer {
-        // Validate fuzzer type against template metadata if available
-        if let Some(metadata) = metadata {
-            if let Some(fuzzers) = &metadata.fuzzers {
-                if !fuzzers.supported.contains(fuzzer) {
-                    anyhow::bail!(
-                        "Fuzzer '{}' not supported by this template. Supported: {}",
-                        fuzzer,
-                        fuzzers.supported.join(", ")
-                    );
-                }
-            }
-        }
-        Ok(fuzzer.clone())
-    } else {
-        // Get default from metadata or prompt user
-        if let Some(metadata) = metadata {
-            if let Some(fuzzers) = &metadata.fuzzers {
-                if fuzzers.supported.len() == 1 {
-                    // Only one option, use it
-                    Ok(fuzzers.supported[0].clone())
-                } else {
-                    // Multiple options, prompt user
-                    let options: Vec<String> = fuzzers
-                        .options
-                        .iter()
-                        .map(|opt| format!("{} - {}", opt.display_name, opt.description))
-                        .collect();
-                    let selected = Select::new("Choose a fuzzer", options).prompt()?;
-                    let fuzzer_name = selected.split(" - ").next().unwrap();
 
-                    // Find the actual fuzzer name from display name
-                    for option in &fuzzers.options {
-                        if option.display_name == fuzzer_name {
-                            return Ok(option.name.clone());
-                        }
-                    }
-                    Ok(fuzzers.default.clone())
-                }
-            } else {
-                Ok("libfuzzer".to_string()) // Default fallback
-            }
-        } else {
-            Ok("libfuzzer".to_string()) // Default fallback
-        }
-    }
-}
 
 pub fn select_fuzzer_with_tracking(args: &Args, metadata: Option<&TemplateMetadata>) -> anyhow::Result<(String, bool)> {
     if let Some(fuzzer) = &args.fuzzer {
@@ -391,62 +291,7 @@ pub fn select_fuzzer_with_tracking(args: &Args, metadata: Option<&TemplateMetada
     }
 }
 
-pub fn select_integration(
-    args: &Args,
-    metadata: Option<&TemplateMetadata>,
-) -> anyhow::Result<String> {
-    if let Some(integration) = &args.integration {
-        // Validate integration type against template metadata if available
-        if let Some(metadata) = metadata {
-            if let Some(integrations) = &metadata.integrations {
-                if !integrations.supported.contains(integration) {
-                    anyhow::bail!(
-                        "Integration '{}' not supported by this template. Supported: {}",
-                        integration,
-                        integrations.supported.join(", ")
-                    );
-                }
-            }
-        }
-        Ok(integration.clone())
-    } else {
-        // Get default from metadata or prompt user
-        if let Some(metadata) = metadata {
-            if let Some(integrations) = &metadata.integrations {
-                if integrations.supported.len() == 1 {
-                    // Only one option, use it
-                    Ok(integrations.supported[0].clone())
-                } else {
-                    // Multiple options, prompt user
-                    // Ensure default option is listed first
-                    let mut sorted_options = integrations.options.clone();
-                    
-                    // Find the default option and move it to the front if it exists
-                    if let Some(default_pos) = sorted_options.iter().position(|opt| opt.name == integrations.default) {
-                        let default_option = sorted_options.remove(default_pos);
-                        sorted_options.insert(0, default_option);
-                    }
-                    
-                    let options: Vec<String> = sorted_options
-                        .iter()
-                        .map(|opt| format!("{} - {}", opt.name, opt.description))
-                        .collect();
 
-                    // Default is now always at index 0
-                    let selected = Select::new("Choose build system integration", options)
-                        .with_starting_cursor(0)
-                        .prompt()?;
-                    let integration_name = selected.split(" - ").next().unwrap();
-                    Ok(integration_name.to_string())
-                }
-            } else {
-                anyhow::bail!("Template does not define any integration options")
-            }
-        } else {
-            anyhow::bail!("Template metadata is missing integration configuration")
-        }
-    }
-}
 
 pub fn select_integration_with_tracking(
     args: &Args,

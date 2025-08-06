@@ -1,7 +1,7 @@
 use crate::types::*;
 use anyhow;
 use handlebars::Handlebars;
-use regex::{Regex, RegexBuilder};
+use regex;
 use serde_json;
 use std::{fs, path::Path, process::Command};
 
