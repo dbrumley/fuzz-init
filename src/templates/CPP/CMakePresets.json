@@ -1,0 +1,67 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 19,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "fuzz-bin",
+      "displayName": "Fuzz (binary/native)",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-fuzz-bin",
+      "toolchainFile": "fuzz/cmake/native.cmake"
+    },
+    {
+      "name": "fuzz-libfuzzer",
+      "displayName": "Fuzz (libFuzzer)",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-fuzz-libfuzzer",
+      "toolchainFile": "fuzz/cmake/libfuzzer.cmake"
+    },
+    {
+      "name": "fuzz-afl",
+      "displayName": "Fuzz (AFL++)",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-afl",
+      "toolchainFile": "fuzz/cmake/afl.cmake"
+    },
+    {
+      "name": "fuzz-hongfuzz",
+      "displayName": "Fuzz (Hongfuzz)",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-hongfuzz",
+      "toolchainFile": "fuzz/cmake/hongfuzz.cmake"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "fuzz-bin",
+      "configurePreset": "fuzz-bin"
+    },
+    {
+      "name": "fuzz-libfuzzer",
+      "configurePreset": "fuzz-libfuzzer"
+    },
+    {
+      "name": "fuzz-afl",
+      "configurePreset": "fuzz-afl",
+      "environment": {
+        "AFL_USE_ASAN": "1",
+        "AFL_USE_UBSAN": "1",
+        "AFL_LLVM_LAF_ALL": "1"
+      }
+    },
+    {
+      "name": "fuzz-hongfuzz",
+      "configurePreset": "fuzz-hongfuzz"
+    }
+  ]
+}
