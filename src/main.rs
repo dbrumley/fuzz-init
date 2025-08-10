@@ -55,8 +55,8 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Get user selections
-    let (default_fuzzer, prompted_fuzzer) = select_fuzzer_with_tracking(&args, metadata.as_ref())?;
-    prompted_values.fuzzer = prompted_fuzzer;
+    /* let (default_fuzzer, prompted_fuzzer) = select_fuzzer_with_tracking(&args, metadata.as_ref())?;
+    prompted_values.fuzzer = prompted_fuzzer; */
 
     let (integration_type, prompted_integration) =
         select_integration_with_tracking(&args, metadata.as_ref())?;
@@ -77,7 +77,6 @@ async fn main() -> anyhow::Result<()> {
     let mut data = json!({
         "project_name": project_name,
         "target_name": project_basename, // Use base name only for template filenames
-        "default_fuzzer": default_fuzzer,
         "integration": integration_type,
         "minimal": minimal_mode
     });
@@ -141,7 +140,6 @@ async fn main() -> anyhow::Result<()> {
         minimal_mode,
         &prompted_values,
         &template_source,
-        &default_fuzzer,
         &integration_type,
     );
 

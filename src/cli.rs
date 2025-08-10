@@ -71,16 +71,16 @@ Examples:\n  - --integration cmake\n  - --integration make"
     )]
     pub integration: Option<String>,
 
-    #[arg(
-        long,
-        env = "FUZZ_INIT_FUZZER",
-        value_name = "FUZZER",
-        long_help = "🐞 Fuzzer engine to configure\n\n\
-All templates use LLVMFuzzerTestOneInput-style harnesses. This flag\ncustomizes the build setup.\n\n\
-Examples:\n  - --fuzzer libfuzzer\n  - --fuzzer afl"
-    )]
-    pub fuzzer: Option<String>,
-
+    /*     #[arg(
+            long,
+            env = "FUZZ_INIT_FUZZER",
+            value_name = "FUZZER",
+            long_help = "🐞 Fuzzer engine to configure\n\n\
+    All templates use LLVMFuzzerTestOneInput-style harnesses. This flag\ncustomizes the build setup.\n\n\
+    Examples:\n  - --fuzzer libfuzzer\n  - --fuzzer afl"
+        )]
+        pub fuzzer: Option<String>,
+     */
     #[arg(
         long,
         env = "FUZZ_INIT_TEMPLATE",
@@ -242,6 +242,7 @@ pub async fn get_template_name(
     }
 }
 
+/*
 pub fn select_fuzzer_with_tracking(
     args: &Args,
     metadata: Option<&TemplateMetadata>,
@@ -293,6 +294,8 @@ pub fn select_fuzzer_with_tracking(
         }
     }
 }
+
+*/
 
 pub fn select_integration_with_tracking(
     args: &Args,
@@ -363,7 +366,6 @@ pub fn print_next_steps(
     minimal_mode: bool,
     prompted_values: &crate::types::PromptedValues,
     template_source: &TemplateSource,
-    fuzzer: &str,
     integration: &str,
 ) {
     println!();
@@ -408,7 +410,6 @@ pub fn print_next_steps(
         }
 
         // Add other parameters
-        command.push_str(&format!(" --fuzzer {}", fuzzer));
         command.push_str(&format!(" --integration {}", integration));
 
         if minimal_mode {

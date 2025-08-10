@@ -9,38 +9,12 @@ version = "1.0.0"
 project_name = { required = true, description = "Name of the fuzzing project" }
 target_name = { default = "target1", description = "Name of the fuzz target" }
 
-# Supported fuzzers for this template
-[fuzzers]
-supported = ["afl", "libfuzzer", "honggfuzz", "standalone"]
-default = "libfuzzer"
 
-[[fuzzers.options]]
-name = "afl"
-display_name = "AFL/AFL++"
-description = "Best for applications"
-requires = "requires AFL or AFL++"
-
-[[fuzzers.options]]
-name = "libfuzzer"
-display_name = "libFuzzer"
-description = "Best for libraries"
-requires = "requires clang with libFuzzer support"
-
-[[fuzzers.options]]
-name = "honggfuzz"
-display_name = "HonggFuzz"
-description = "Alternative to both AFL and libFuzzer"
-requires = "requires honggfuzz"
-
-[[fuzzers.options]]
-name = "standalone"
-display_name = "Standalone"
-description = "Binary with no fuzzing support built-in"
-requires = "no requirements"
 
 # Supported integration types
 [integrations]
-supported = ["standalone", "make", "cmake"]
+#supported = ["script", "make", "cmake"]
+supported = ["make", "cmake"]
 default = "make"
 
 [[integrations.options]]
@@ -49,8 +23,8 @@ description = "Makefile-based build system integration"
 files = ["fuzz/Makefile", "fuzz/INTEGRATION.md"]
 
 [[integrations.options]]
-name = "standalone"
-description = "Self-contained fuzzing setup with build script"
+name = "script"
+description = "Self-contained fuzzing setup with build.sh script"
 files = ["fuzz/build.sh"]
 
 
@@ -80,7 +54,7 @@ no_template_extensions = [".dict", ".bin"]
 # Integration-specific files
 [[files]]
 path = "fuzz/build.sh"
-condition = "integration == 'standalone'"
+condition = "integration == 'script'"
 executable = true
 
 [[files]]
@@ -90,6 +64,11 @@ condition = "integration == 'make'"
 [[files]]
 path = "fuzz/CMakeLists.txt"
 condition = "integration == 'cmake'"
+
+[[files]]
+path = "cmake/Fuzzing.cmake"
+condition = "integration == 'cmake'"
+
 
 [[files]]
 path = "fuzz/INTEGRATION.md"
@@ -106,7 +85,7 @@ condition = "integration == 'cmake' && minimal == false"
 
 [[files]]
 path = "build.sh"
-condition = "integration == 'standalone' && minimal == false"
+condition = "integration == 'script' && minimal == false"
 executable = true
 
 # Dictionary files - template filename but not content
@@ -137,23 +116,23 @@ create_empty = true  # Create empty directory for corpus files
 # Post-generation message
 [post_generation_message]
 content = """
-# 🎯 {{project_name}} Universal Fuzzing Setup Complete!
+🎯 {{project_name}} Universal Fuzzing Setup Complete!
 
 {{#if minimal}}
-## Quick Start (Minimal Mode)
+🚀 Quick Start (Minimal Mode)
 Your universal fuzzing harness has been added to the `fuzz/` directory.
 
-### 1. Build All Compatible Fuzzers
+1. Build All Compatible Fuzzers
 ```bash
 cd fuzz
 make        # Builds all compatible fuzzing targets based on your environment
 make test   # Tests the best available fuzzer
 ```
 
-### 2. Customize Your Harness
+2. Customize Your Harness
 Edit `src/{{target_name}}.cpp` to call your library functions instead of the demo code.
 
-### 3. Integration with Your Project
+3. Integration with Your Project
 The fuzzer will automatically detect and link against your existing library.
 For best results, rebuild your library with sanitizers:
 ```bash
@@ -163,10 +142,8 @@ cd ..  # Back to project root
 ```
 
 {{else}}
-## Full Tutorial Mode
-Complete project with universal fuzzing support created.
 
-### Quick Start - Environment-Driven Fuzzing
+🚀 Quick Start - Environment-Driven Fuzzing
 ```bash
 cd {{project_name}}
 make fuzz        # Builds all compatible fuzzers for your environment

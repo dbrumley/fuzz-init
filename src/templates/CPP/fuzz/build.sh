@@ -1,6 +1,6 @@
 #!/bin/bash
 # Universal fuzzing build script for {{project_name}}
-# Links against standard lib{{project_name}}.a with intelligent fuzzer detection
+# Links against standard lib{{target_name}}.a with intelligent fuzzer detection
 
 set -e
 
@@ -73,7 +73,19 @@ fi
 {{/unless}}
 
 # Standard library naming (overridable via LIBRARY_PATH)
-LIBRARY_PATH="${LIBRARY_PATH:-$LIBRARY_DIR/lib{{project_name}}.a}"
+LIBRARY_PATH="${LIBRARY_PATH:-$LIBRARY_DIR/lib{{target_name}}.a}"
+
+{{#if minimal}}
+# In minimal mode, check if library exists for linking decisions
+if [ "$INTEGRATION_MODE" = "standalone" ] && [ ! -f "$LIBRARY_PATH" ]; then
+    echo "   Library: Not found (will build standalone)"
+    USE_LIBRARY="no"
+else
+    USE_LIBRARY="yes"
+fi
+{{else}}
+USE_LIBRARY="yes"
+{{/if}}
 
 # =============================================================================
 # Compiler Configuration
@@ -100,7 +112,7 @@ CFLAGS="-g -O2 -Wall -Wextra $INCLUDES"
 # =============================================================================
 
 FUZZ_SRC="src/{{target_name}}.cpp"
-DRIVER_SRC="driver/main.c"
+DRIVER_SRC="driver/main.cpp"
 
 # Target executables with standard naming
 TARGET_LIBFUZZER="$BUILD_DIR/{{target_name}}-libfuzzer"
@@ -127,7 +139,7 @@ build_objects() {
     $CXX $CXXFLAGS -c "$FUZZ_SRC" -o "$HARNESS_OBJ"
     
     # Compile driver (for non-libFuzzer targets)
-    $CC $CFLAGS -c "$DRIVER_SRC" -o "$DRIVER_OBJ"
+    $CXX $CXXFLAGS -c "$DRIVER_SRC" -o "$DRIVER_OBJ"
     
     echo "✅ Objects compiled"
 }
@@ -136,8 +148,13 @@ build_libfuzzer() {
     echo "🔨 Building libFuzzer target..."
     
     if [ -n "$HAVE_CLANG" ]; then
-        clang++ $CXXFLAGS -fsanitize=address,undefined,fuzzer \
-            "$FUZZ_SRC" "$LIBRARY_PATH" -o "$TARGET_LIBFUZZER"
+        if [ "$USE_LIBRARY" = "yes" ]; then
+            clang++ $CXXFLAGS -fsanitize=address,undefined,fuzzer \
+                "$FUZZ_SRC" "$LIBRARY_PATH" -o "$TARGET_LIBFUZZER"
+        else
+            clang++ $CXXFLAGS -fsanitize=address,undefined,fuzzer \
+                "$FUZZ_SRC" -o "$TARGET_LIBFUZZER"
+        fi
         echo "✅ Built: $TARGET_LIBFUZZER"
     else
         echo "❌ libFuzzer requires clang++ but only found: $CXX"
@@ -169,9 +186,15 @@ build_afl() {
     $AFL_C $CFLAGS $AFL_FLAGS -c "$DRIVER_SRC" -o "${DRIVER_OBJ/.o/-afl.o}"
     
     # Link
-    $AFL_CXX $AFL_FLAGS \
-        "${HARNESS_OBJ/.o/-afl.o}" "${DRIVER_OBJ/.o/-afl.o}" "$LIBRARY_PATH" \
-        -o "$TARGET_AFL"
+    if [ "$USE_LIBRARY" = "yes" ]; then
+        $AFL_CXX $AFL_FLAGS \
+            "${HARNESS_OBJ/.o/-afl.o}" "${DRIVER_OBJ/.o/-afl.o}" "$LIBRARY_PATH" \
+            -o "$TARGET_AFL"
+    else
+        $AFL_CXX $AFL_FLAGS \
+            "${HARNESS_OBJ/.o/-afl.o}" "${DRIVER_OBJ/.o/-afl.o}" \
+            -o "$TARGET_AFL"
+    fi
     
     echo "✅ Built: $TARGET_AFL"
 }
@@ -180,9 +203,15 @@ build_honggfuzz() {
     echo "🔨 Building HonggFuzz target..."
     
     if [ -n "$HAVE_HFUZZ" ]; then
-        hfuzz-clang++ $CXXFLAGS -fsanitize=address,undefined \
-            "$HARNESS_OBJ" "$DRIVER_OBJ" "$LIBRARY_PATH" \
-            -o "$TARGET_HONGGFUZZ"
+        if [ "$USE_LIBRARY" = "yes" ]; then
+            hfuzz-clang++ $CXXFLAGS -fsanitize=address,undefined \
+                "$HARNESS_OBJ" "$DRIVER_OBJ" "$LIBRARY_PATH" \
+                -o "$TARGET_HONGGFUZZ"
+        else
+            hfuzz-clang++ $CXXFLAGS -fsanitize=address,undefined \
+                "$HARNESS_OBJ" "$DRIVER_OBJ" \
+                -o "$TARGET_HONGGFUZZ"
+        fi
         echo "✅ Built: $TARGET_HONGGFUZZ"
     else
         echo "❌ HonggFuzz not found. Install: apt install honggfuzz"
@@ -193,9 +222,15 @@ build_honggfuzz() {
 build_standalone() {
     echo "🔨 Building standalone target..."
     
-    $CXX -g \
-        "$HARNESS_OBJ" "$DRIVER_OBJ" "$LIBRARY_PATH" \
-        -o "$TARGET_STANDALONE"
+    if [ "$USE_LIBRARY" = "yes" ]; then
+        $CXX -g \
+            "$HARNESS_OBJ" "$DRIVER_OBJ" "$LIBRARY_PATH" \
+            -o "$TARGET_STANDALONE"
+    else
+        $CXX -g \
+            "$HARNESS_OBJ" "$DRIVER_OBJ" \
+            -o "$TARGET_STANDALONE"
+    fi
     
     echo "✅ Built: $TARGET_STANDALONE"
 }
@@ -306,7 +341,7 @@ check_library() {
         echo "ℹ️  Minimal mode: Using built-in demonstration code"
         echo "🔄 To integrate with your library:"
         echo "   1. Build your library with sanitizer flags"
-        echo "   2. Place it where we can find it (../lib{{project_name}}.a)"
+        echo "   2. Place it where we can find it (../lib{{target_name}}.a)"
         echo "   3. Edit src/{{target_name}}.cpp to call your functions"
     fi
     {{/unless}}

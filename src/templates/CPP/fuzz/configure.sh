@@ -11,6 +11,69 @@ echo ""
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Function to create demo library for testing
+create_demo_library() {
+    echo "📚 Creating demo library for testing..."
+    
+    # Create temporary source files
+    mkdir -p demo_lib
+    
+    cat > demo_lib/demo.cpp << 'EOF'
+#include <cstring>
+#include <cstdlib>
+
+// Demo function with an intentional bug for fuzzing to find
+extern "C" int demo_process(const char* input, size_t len) {
+    if (len >= 3) {
+        // Intentional bug: crashes on input "BUG"
+        if (input[0] == 'B' && input[1] == 'U' && input[2] == 'G') {
+            int* crash = nullptr;
+            *crash = 42;  // Null pointer dereference
+        }
+        
+        // Another bug: buffer overflow on long input
+        if (len > 100) {
+            char buffer[50];
+            memcpy(buffer, input, len);  // Buffer overflow
+        }
+    }
+    return 0;
+}
+
+// Additional demo function
+extern "C" void demo_parse(const char* data, size_t size) {
+    if (size > 0 && data[0] == 'P') {
+        // Process something
+        char* temp = (char*)malloc(size);
+        if (temp) {
+            memcpy(temp, data, size);
+            // Intentional bug: double free on specific input
+            if (size > 5 && memcmp(temp, "PARSE", 5) == 0) {
+                free(temp);
+                free(temp);  // Double free
+            } else {
+                free(temp);
+            }
+        }
+    }
+}
+EOF
+
+    # Compile the demo library
+    echo "🔨 Compiling demo library..."
+    ${CXX:-g++} -c demo_lib/demo.cpp -o demo_lib/demo.o
+    ar rcs ../lib{{target_name}}.a demo_lib/demo.o
+    
+    echo "✅ Created demo library: ../lib{{target_name}}.a"
+    echo ""
+    echo "ℹ️  This is a demonstration library with intentional bugs for testing."
+    echo "   It shows that your fuzzing setup is working correctly!"
+    echo ""
+    
+    # Clean up temporary files
+    rm -rf demo_lib
+}
+
 {{#if (eq integration "cmake")}}
 # CMake Integration Setup
 echo "📋 Setting up CMake build..."
@@ -81,27 +144,23 @@ echo "✓ Build successful: $TARGET_NAME"
 # Makefile Integration Setup
 echo "📋 Setting up Makefile build..."
 
-# Check for required library in parent directory
-REQUIRED_LIB="../lib{{project_name}}-{{default_fuzzer}}.a"
-if [ ! -f "$REQUIRED_LIB" ]; then
-    echo "⚠️ Required library not found: $REQUIRED_LIB"
-    echo ""
-    echo "Please build the fuzzing library first:"
-    echo "  cd .. && make lib-{{default_fuzzer}}"
-    echo ""
-    echo "This ensures consistent sanitizer instrumentation."
-    echo "See INTEGRATION.md for details."
-    echo ""
-    exit 1
-fi
+# Check for any existing library
+DETECTED_LIB=$(find .. -maxdepth 3 -name "lib*.a" ! -path "*/fuzz/*" ! -path "*/.git/*" 2>/dev/null | head -1)
 
-echo "✓ Found required library: $REQUIRED_LIB"
+if [ -n "$DETECTED_LIB" ]; then
+    echo "✓ Found existing library: $DETECTED_LIB"
+    USING_DEMO=false
+else
+    echo "ℹ️  No existing library found in parent directories"
+    create_demo_library
+    USING_DEMO=true
+fi
 
 # Build the fuzzer
 echo ""
 echo "🏗️ Building fuzzer..."
 make clean 2>/dev/null || true  # Clean any previous builds, ignore errors
-make {{target_name}}-{{default_fuzzer}} || {
+make {{default_fuzzer}} || {
     echo ""
     echo "❌ Build failed!"
     echo ""
@@ -126,21 +185,35 @@ echo "✓ Build successful: {{target_name}}-{{default_fuzzer}}"
 echo ""
 echo "✅ Setup complete!"
 echo ""
+
+{{#if (eq integration "make")}}
+if [ "$USING_DEMO" = true ]; then
+    echo "📚 Using demonstration library for testing"
+    echo ""
+    echo "🎯 Your fuzzer is working! Here's what to do next:"
+    echo "  1. ✏️  Edit src/{{target_name}}.cpp to call YOUR library functions"
+    echo "  2. 🔨 Build your actual library and place it in the parent directory"
+    echo "  3. 🏃 Re-run this configure script to link with your library"
+    echo ""
+    echo "💡 The demo library has intentional bugs that fuzzers can find:"
+    echo "   - Input 'BUG' causes a crash"
+    echo "   - Input 'PARSE' causes a double-free"
+    echo "   - Long inputs (>100 bytes) cause buffer overflow"
+else
+    echo "🔗 Linked with your library: $(basename $DETECTED_LIB)"
+    echo ""
+    echo "🎯 Next steps:"
+    echo "  1. ✏️  Customize src/{{target_name}}.cpp to test your specific APIs"
+    echo "  2. 🛡️  Ensure your library was built with matching sanitizer flags"
+fi
+{{else}}
 echo "🎯 Your fuzzer is ready:"
-{{#if (eq integration "cmake")}}
 echo "  📁 Binary: build/{{target_name}}_{{default_fuzzer}}"
 echo "  🏃 Test run: ./{{target_name}}_{{default_fuzzer}} ../testsuite/"
-{{else}}
-echo "  📁 Binary: {{target_name}}-{{default_fuzzer}}"
-echo "  🏃 Test run: ./{{target_name}}-{{default_fuzzer}} testsuite/"
-{{/if}}
 echo ""
 echo "🎯 Next steps:"
 echo "  1. ✏️ Customize src/{{target_name}}.cpp for your API"
-{{#if (eq integration "cmake")}}
 echo "  2. 🛡️ Consider rebuilding parent with sanitizers (see ../INTEGRATION.md)"
-{{else}}
-echo "  2. 🛡️ Ensure parent was built with lib-{{default_fuzzer}} target for sanitizers"
 {{/if}}
 {{#if (eq default_fuzzer "libfuzzer")}}
 echo "  3. 🐛 Start fuzzing: {{#if (eq integration "cmake")}}./{{target_name}}_{{default_fuzzer}}{{else}}./{{target_name}}-{{default_fuzzer}}{{/if}} ../testsuite/ -dict=../dictionaries/{{target_name}}.dict"

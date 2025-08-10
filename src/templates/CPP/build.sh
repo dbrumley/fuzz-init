@@ -77,7 +77,7 @@ echo "   Fuzz mode: $FUZZ_MODE"
 # =============================================================================
 
 CXXFLAGS="-Wall -Wextra -g -O0 -std=c++11 -I$INC_DIR"
-FUZZ_CXXFLAGS="-Wall -Wextra -std=c++11 -I$INC_DIR $FUZZ_FLAGS"
+FUZZ_CXXFLAGS="$CXXFLAGS $FUZZ_FLAGS"
 
 # =============================================================================
 # Source Files
@@ -323,8 +323,8 @@ case "${1:-}" in
         main
         ;;
     *)
-        echo "❌ Unknown option: $1"
-        echo "Run '$0 --help' for usage information"
-        exit 1
+        # Ignore unknown options and run main build
+        # This allows the script to work with build systems that pass extra arguments
+        main
         ;;
 esac

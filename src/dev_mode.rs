@@ -13,7 +13,6 @@ use tempfile::TempDir;
 #[derive(Debug, Clone)]
 pub struct TestConfiguration {
     pub language: String,
-    pub fuzzer: String,
     pub integration: String,
     pub minimal: bool,
 }
@@ -84,11 +83,13 @@ pub async fn run_dev_mode(args: &Args) -> Result<()> {
         let actual_watch_path = if watch_path == "auto" && args.language.is_some() {
             format!("src/templates/{}/", args.language.as_ref().unwrap())
         } else if watch_path == "auto" && args.language.is_none() {
-            return Err(anyhow!("--watch without path requires --language to be specified"));
+            return Err(anyhow!(
+                "--watch without path requires --language to be specified"
+            ));
         } else {
             watch_path.clone()
         };
-        
+
         println!("\n👀 Watching {} for changes...", actual_watch_path);
         println!("Press Ctrl+C to exit");
 
@@ -159,10 +160,10 @@ async fn run_template_validation(args: &Args, session: &mut DevSession) -> Resul
     // Run tests
     for (i, config) in configs.iter().enumerate() {
         println!(
-            "\n[{}/{}] Testing: {} + {} + {}",
+            "\n[{}/{}] Testing: {}  + {}",
             i + 1,
             configs.len(),
-            config.fuzzer,
+            //config.fuzzer,
             config.integration,
             if config.minimal { "minimal" } else { "full" }
         );
@@ -223,31 +224,23 @@ fn generate_test_configurations(
     let mut configs = Vec::new();
 
     // Get supported configurations from metadata or defaults
-    let (supported_fuzzers, supported_integrations) = if let Some(meta) = metadata {
-        let fuzzers = meta
-            .fuzzers
-            .as_ref()
-            .map(|f| f.supported.clone())
-            .unwrap_or_else(|| vec!["libfuzzer".to_string()]);
+    let supported_integrations = if let Some(meta) = metadata {
         let integrations = meta
             .integrations
             .as_ref()
             .map(|i| i.supported.clone())
-            .unwrap_or_else(|| vec!["standalone".to_string()]);
-        (fuzzers, integrations)
+            .unwrap_or_else(|| vec!["script".to_string()]);
+        integrations
     } else {
-        (
-            vec!["libfuzzer".to_string()],
-            vec!["standalone".to_string()],
-        )
+        vec!["script".to_string()]
     };
 
     // Filter by user-specified options
-    let fuzzers_to_test = if let Some(fuzzer) = &args.fuzzer {
+    /* let fuzzers_to_test = if let Some(fuzzer) = &args.fuzzer {
         vec![fuzzer.clone()]
     } else {
         supported_fuzzers
-    };
+    }; */
 
     let integrations_to_test = if let Some(integration) = &args.integration {
         vec![integration.clone()]
@@ -262,18 +255,18 @@ fn generate_test_configurations(
     };
 
     // Generate all combinations
-    for fuzzer in &fuzzers_to_test {
-        for integration in &integrations_to_test {
-            for &minimal in &modes_to_test {
-                configs.push(TestConfiguration {
-                    language: language.to_string(),
-                    fuzzer: fuzzer.clone(),
-                    integration: integration.clone(),
-                    minimal,
-                });
-            }
+    /* for fuzzer in &fuzzers_to_test { */
+    for integration in &integrations_to_test {
+        for &minimal in &modes_to_test {
+            configs.push(TestConfiguration {
+                language: language.to_string(),
+                //fuzzer: fuzzer.clone(),
+                integration: integration.clone(),
+                minimal,
+            });
         }
     }
+    /*  } */
 
     Ok(configs)
 }
@@ -288,9 +281,9 @@ async fn test_configuration(
 
     // Generate unique project name for this test
     let project_name = format!(
-        "test-{}-{}-{}-{}",
+        "test-{}-{}-{}",
         config.language,
-        config.fuzzer,
+        //config.fuzzer,
         config.integration,
         if config.minimal { "min" } else { "full" }
     );
@@ -354,7 +347,7 @@ async fn generate_test_project(
     let data = json!({
         "project_name": project_dir.file_name().unwrap().to_str().unwrap(),
         "target_name": project_dir.file_name().unwrap().to_str().unwrap(),
-        "default_fuzzer": config.fuzzer,
+        //"default_fuzzer": config.fuzzer,
         "integration": config.integration,
         "minimal": config.minimal
     });
@@ -624,8 +617,8 @@ fn print_final_report(session: &DevSession) {
 
 fn format_config_name(config: &TestConfiguration) -> String {
     format!(
-        "{} + {} + {}",
-        config.fuzzer,
+        "{}  + {}",
+        //config.fuzzer,
         config.integration,
         if config.minimal { "minimal" } else { "full" }
     )

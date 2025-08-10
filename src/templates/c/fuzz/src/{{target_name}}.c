@@ -4,7 +4,7 @@
 #include <string.h>
 
 {{#unless minimal}}
-#include "lib.h"
+#include "mylib.h"
 {{else}}
 // TODO: Replace this placeholder with your project's header files
 // Example: #include "your_lib.h"
