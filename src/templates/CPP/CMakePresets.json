@@ -18,45 +18,42 @@
       "name": "fuzz-native",
       "displayName": "Fuzz (binary/native)",
       "inherits": "base",
-      "binaryDir": "${sourceDir}/build-fuzz-bin",
+      "binaryDir": "${sourceDir}/build/native",
       "toolchainFile": "fuzz/cmake/native.cmake"
     },
     {
       "name": "fuzz-libfuzzer",
       "displayName": "Fuzz (libFuzzer)",
       "inherits": "base",
-      "binaryDir": "${sourceDir}/build-fuzz-libfuzzer",
+      "binaryDir": "${sourceDir}/build/libfuzzer",
       "toolchainFile": "fuzz/cmake/libfuzzer.cmake"
     },
     {
       "name": "fuzz-afl",
       "displayName": "Fuzz (AFL++)",
       "inherits": "base",
-      "binaryDir": "${sourceDir}/build-afl",
+      "binaryDir": "${sourceDir}/build/afl",
       "toolchainFile": "fuzz/cmake/afl.cmake"
     },
     {
       "name": "fuzz-hongfuzz",
       "displayName": "Fuzz (Hongfuzz)",
       "inherits": "base",
-      "binaryDir": "${sourceDir}/build-hongfuzz",
+      "binaryDir": "${sourceDir}/build/hongfuzz",
       "toolchainFile": "fuzz/cmake/hongfuzz.cmake"
     }
   ],
   "buildPresets": [
     {
       "name": "fuzz-native",
-      "displayName": "Build (binary/native)",
       "configurePreset": "fuzz-native"
     },
     {
       "name": "fuzz-libfuzzer",
-      "displayName": "Build (libFuzzer)",
       "configurePreset": "fuzz-libfuzzer"
     },
     {
       "name": "fuzz-afl",
-      "displayName": "Build (AFL++)",
       "configurePreset": "fuzz-afl",
       "environment": {
         "AFL_USE_ASAN": "1",
@@ -66,14 +63,12 @@
     },
     {
       "name": "fuzz-hongfuzz",
-      "displayName": "Build (Hongfuzz)",
       "configurePreset": "fuzz-hongfuzz"
     }
   ],
   "workflowPresets": [
     {
       "name": "fuzz-build-native",
-      "displayName": "Workflow: build native",
       "steps": [
         {
           "type": "configure",
@@ -87,7 +82,6 @@
     },
     {
       "name": "fuzz-build-libfuzzer",
-      "displayName": "Workflow: build libFuzzer",
       "steps": [
         {
           "type": "configure",
@@ -101,7 +95,6 @@
     },
     {
       "name": "fuzz-build-afl",
-      "displayName": "Workflow: build AFL++",
       "steps": [
         {
           "type": "configure",
@@ -115,7 +108,6 @@
     },
     {
       "name": "fuzz-build-hongfuzz",
-      "displayName": "Workflow: build Hongfuzz",
       "steps": [
         {
           "type": "configure",
