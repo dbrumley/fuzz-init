@@ -2,15 +2,17 @@ cmake_minimum_required(VERSION 3.19)
 project(HelloFuzzHarnesses LANGUAGES C CXX)
 
 {{#if minimal}}
+# Assumes builds are from the 'fuzz' directory.
 set(FUZZ_SRC_DIR "${CMAKE_SOURCE_DIR}/src" CACHE PATH "")
 set(FUZZ_DRIVER_DIR "${CMAKE_SOURCE_DIR}/driver" CACHE PATH "")
 {{else}}
+# Assumes builds are from the top-level project directory. 
 set(FUZZ_SRC_DIR "${CMAKE_SOURCE_DIR}/fuzz/src" CACHE PATH "")
 set(FUZZ_DRIVER_DIR "${CMAKE_SOURCE_DIR}/fuzz/driver" CACHE PATH "")
 {{/if}}
 
 set(FUZZ_HARNESS_SRCS 
-  "${FUZZ_SRC_DIR}/{{project_name}}.cpp"
+  "${FUZZ_SRC_DIR}/fuzz_harness_1.cpp"
   # add more harness file sources here.
 )
 

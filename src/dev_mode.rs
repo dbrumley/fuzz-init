@@ -460,169 +460,21 @@ async fn build_test_project(
     build_log: &mut String,
     metadata: Option<&TemplateMetadata>,
 ) -> Result<()> {
-    // Try template-driven validation first
+    // Template-driven validation only - no hardcoded fallbacks
     if let Some(meta) = metadata {
         if let Some(validation) = &meta.validation {
             return run_validation_commands(project_dir, config, build_log, validation).await;
         }
     }
     
-    // Fallback to hardcoded logic for backward compatibility
-    match config.integration.as_str() {
-        "standalone" => build_standalone_project(project_dir, config, build_log).await,
-        "make" => build_makefile_project(project_dir, config, build_log).await,
-        "cmake" => build_cmake_project(project_dir, config, build_log).await,
-        _ => Err(anyhow!(
-            "Unsupported integration type: {}",
-            config.integration
-        )),
-    }
+    Err(anyhow!(
+        "Template '{}' does not define validation commands for integration '{}'. \
+        Please add a [validation] section to the template.toml file.",
+        config.language,
+        config.integration
+    ))
 }
 
-async fn build_standalone_project(
-    project_dir: &Path,
-    config: &TestConfiguration,
-    build_log: &mut String,
-) -> Result<()> {
-    let build_script = if config.minimal {
-        project_dir.join("fuzz").join("build.sh")
-    } else {
-        project_dir.join("build.sh")
-    };
-
-    if !build_script.exists() {
-        return Err(anyhow!(
-            "Build script not found: {}",
-            build_script.display()
-        ));
-    }
-
-    build_log.push_str(&format!("Running: {}\n", build_script.display()));
-
-    let output = Command::new("bash")
-        .arg(&build_script)
-        .current_dir(if config.minimal {
-            project_dir.join("fuzz")
-        } else {
-            project_dir.to_path_buf()
-        })
-        .output()?;
-
-    build_log.push_str(&format!(
-        "stdout: {}\n",
-        String::from_utf8_lossy(&output.stdout)
-    ));
-    build_log.push_str(&format!(
-        "stderr: {}\n",
-        String::from_utf8_lossy(&output.stderr)
-    ));
-
-    if !output.status.success() {
-        return Err(anyhow!(
-            "Build script failed with exit code: {:?}",
-            output.status.code()
-        ));
-    }
-
-    Ok(())
-}
-
-async fn build_makefile_project(
-    project_dir: &Path,
-    config: &TestConfiguration,
-    build_log: &mut String,
-) -> Result<()> {
-    let make_dir = if config.minimal {
-        project_dir.join("fuzz")
-    } else {
-        project_dir.to_path_buf()
-    };
-
-    build_log.push_str(&format!("Running: make in {}\n", make_dir.display()));
-
-    let output = Command::new("make").current_dir(&make_dir).output()?;
-
-    build_log.push_str(&format!(
-        "stdout: {}\n",
-        String::from_utf8_lossy(&output.stdout)
-    ));
-    build_log.push_str(&format!(
-        "stderr: {}\n",
-        String::from_utf8_lossy(&output.stderr)
-    ));
-
-    if !output.status.success() {
-        return Err(anyhow!(
-            "Make failed with exit code: {:?}",
-            output.status.code()
-        ));
-    }
-
-    Ok(())
-}
-
-async fn build_cmake_project(
-    project_dir: &Path,
-    config: &TestConfiguration,
-    build_log: &mut String,
-) -> Result<()> {
-    let cmake_dir = if config.minimal {
-        project_dir.join("fuzz")
-    } else {
-        project_dir.to_path_buf()
-    };
-
-    let build_dir = cmake_dir.join("build");
-    std::fs::create_dir_all(&build_dir)?;
-
-    build_log.push_str(&format!("Running: cmake .. in {}\n", build_dir.display()));
-
-    // Configure
-    let output = Command::new("cmake")
-        .arg("..")
-        .current_dir(&build_dir)
-        .output()?;
-
-    build_log.push_str(&format!(
-        "cmake stdout: {}\n",
-        String::from_utf8_lossy(&output.stdout)
-    ));
-    build_log.push_str(&format!(
-        "cmake stderr: {}\n",
-        String::from_utf8_lossy(&output.stderr)
-    ));
-
-    if !output.status.success() {
-        return Err(anyhow!(
-            "CMake configure failed with exit code: {:?}",
-            output.status.code()
-        ));
-    }
-
-    // Build
-    let output = Command::new("cmake")
-        .args(&["--build", "."])
-        .current_dir(&build_dir)
-        .output()?;
-
-    build_log.push_str(&format!(
-        "cmake build stdout: {}\n",
-        String::from_utf8_lossy(&output.stdout)
-    ));
-    build_log.push_str(&format!(
-        "cmake build stderr: {}\n",
-        String::from_utf8_lossy(&output.stderr)
-    ));
-
-    if !output.status.success() {
-        return Err(anyhow!(
-            "CMake build failed with exit code: {:?}",
-            output.status.code()
-        ));
-    }
-
-    Ok(())
-}
 
 async fn start_file_watcher(watch_path: &str, args: &Args, mut session: DevSession) -> Result<()> {
     let (tx, rx) = channel();

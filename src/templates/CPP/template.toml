@@ -91,7 +91,7 @@ condition = "integration == 'cmake' && minimal == true"
 
 # Dictionary files - template filename but not content
 [[files]]
-path = "fuzz/dictionaries/{{target_name}}.dict"
+path = "fuzz/dictionaries/fuzz_harness.dict"
 template = true
 
 # Root-level tutorial files (full mode only)
@@ -106,7 +106,7 @@ executable = true
 
 # Directory creation rules
 [[directories]]
-path = "fuzz/testsuite/{{target_name}}"
+path = "fuzz/testsuite/fuzz_harness_1"
 create_empty = true  # Create empty directory for corpus files
 
 
@@ -114,108 +114,7 @@ create_empty = true  # Create empty directory for corpus files
 # Post-generation message
 [post_generation_message]
 content = """
-🎯 {{project_name}} Universal Fuzzing Setup Complete!
-
-{{#if minimal}}
-🚀 Quick Start (Minimal Mode)
-Your universal fuzzing harness has been added to the `fuzz/` directory.
-
-1. Build All Compatible Fuzzers
-```bash
-cd fuzz
-make        # Builds all compatible fuzzing targets based on your environment
-make test   # Tests the best available fuzzer
-```
-
-2. Customize Your Harness
-Edit `src/{{target_name}}.cpp` to call your library functions instead of the demo code.
-
-3. Integration with Your Project
-The fuzzer will automatically detect and link against your existing library.
-For best results, rebuild your library with sanitizers:
-```bash
-cd ..  # Back to project root
-# If using make: make CXXFLAGS+="-fsanitize=address,undefined"
-# If using cmake: cmake -S . -B build -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined"
-```
-
-{{else}}
-
-🚀 Quick Start - Environment-Driven Fuzzing
-```bash
-cd {{project_name}}
-make fuzz        # Builds all compatible fuzzers for your environment
-make fuzz-test   # Tests fuzzing setup
-```
-
-### Individual Fuzzer Targets
-- `make fuzz-libfuzzer` - libFuzzer (requires clang++)
-- `make fuzz-afl` - AFL++ fuzzing  
-- `make fuzz-honggfuzz` - HonggFuzz (requires honggfuzz)
-- `make fuzz-standalone` - Standalone binary (works everywhere)
-
-{{/if}}
-
-## Universal Fuzzing Features ✨
-- **Environment Detection**: Automatically detects available compilers and fuzzers
-- **Standard Library Naming**: Uses `lib{{project_name}}.a` (no fuzzer-specific suffixes)
-- **Smart Error Messages**: Helpful guidance when tools are missing
-- **Build System Agnostic**: Same functionality across Make, CMake, and build scripts
-- **Seamless Integration**: Works with existing projects without name conflicts
-
-## Next Steps
-1. 🔍 Run `make fuzz-info` - See detected environment and capabilities
-2. ✏️ Edit `{{#if minimal}}fuzz/{{/if}}src/{{target_name}}.cpp` - Replace demo with your code
-3. 🚀 Run `make fuzz` - Build all compatible fuzzers
-4. 🐛 Start fuzzing:
-{{#if minimal}}
-   - `cd fuzz && make run-libfuzzer` (if clang++ available)
-   - `cd fuzz && make run-standalone` (fallback)
-{{else}}
-   - `./fuzz/{{target_name}}-libfuzzer testsuite/` (if clang++ available)
-   - `./fuzz/{{target_name}}-standalone testsuite/` (fallback)
-{{/if}}
-
-## 📚 Documentation
-{{#if minimal}}
-- `fuzz/INTEGRATION.md` - Integration with existing projects
-- `fuzz/README.md` - Quick fuzzing reference
-{{else}}
-- `TUTORIAL.md` - Complete fuzzing tutorial with examples
-- `fuzz/INTEGRATION.md` - Integration guide for existing projects  
-- `fuzz/README.md` - Quick reference for fuzzing commands
-{{/if}}
-
-## Environment-Specific Notes
-The generated build system automatically adapts to your environment:
-
-**With clang++**: Full fuzzing with sanitizers (libFuzzer, AFL, HonggFuzz, standalone)
-**With g++ only**: Basic AFL and standalone fuzzing (no sanitizers)
-**Any compiler**: Standalone mode for Mayhem and manual testing
-
-{{#if (eq integration "cmake")}}
-## CMake Integration
-- Uses standard CMake target naming conventions
-- Automatic compiler and fuzzer detection
-- Build with: `cmake --build . --target fuzz`
-{{/if}}
-
-{{#if (eq integration "make")}}
-## Makefile Integration  
-- Universal targets that adapt to your environment
-- Standard library naming: `lib{{project_name}}.a`
-- Build with: `make fuzz`
-{{/if}}
-
-{{#if (eq integration "standalone")}}
-## Standalone Script Integration
-- Self-contained build scripts with environment detection
-- Works without make or cmake dependencies
-- Build with: `./build.sh`
-{{/if}}
-
----
-**🎯 Ready to fuzz!** The build system will automatically use the best fuzzing setup for your environment.
+To Be done. 
 """
 
 # Post-generation hooks (optional future feature)
