@@ -1,1 +1,0 @@
-{{#if minimal}}This contains the string 'bug' which will crash{{else}}example input{{/if}}

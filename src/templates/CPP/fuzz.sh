@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Engines we support via workflow presets
-ENGINES=("libfuzzer" "afl" "hongfuzz" "native")
+# Engines we support
+ENGINES=("libfuzzer" "afl" "hongfuzz" "standalone")
 
 usage() {
   cat <<'USAGE'
@@ -11,10 +11,10 @@ Usage:
   ./fuzz.sh test  [ENGINE] [S]  # Quick sanity fuzz; S seconds (default 10)
 
 Engines:
-  libfuzzer   → workflow preset: fuzz-build-libfuzzer
-  afl         → workflow preset: fuzz-build-afl
-  hongfuzz    → workflow preset: fuzz-build-hongfuzz
-  native      → workflow preset: fuzz-build-native
+  libfuzzer   → Build with libFuzzer (requires clang++)
+  afl         → Build with AFL++ (requires afl-clang-fast++)
+  hongfuzz    → Build with HonggFuzz (requires hfuzz-clang++)
+  standalone  → Build standalone binary (no fuzzing engine)
 
 Examples:
   ./fuzz.sh build
@@ -32,13 +32,17 @@ is_engine() {
 
 # -------- Paths / helpers --------
 
-# Map engine → binary dir produced by your CMakePresets
+# Map engine → binary dir based on build system
 bindir_for() {
   case "$1" in
-    libfuzzer) echo "build-fuzz-libfuzzer/bin" ;;
-    afl)       echo "build-afl/bin" ;;
-    hongfuzz)  echo "build-hongfuzz/bin" ;;
-    native)    echo "build-fuzz-bin/bin" ;;
+{{#if (eq integration 'cmake')}}
+    libfuzzer) echo "build/libfuzzer/bin" ;;
+    afl)       echo "build/afl/bin" ;;
+    hongfuzz)  echo "build/hongfuzz/bin" ;;
+    standalone) echo "build/standalone/bin" ;;
+{{else if (eq integration 'make')}}
+    libfuzzer|afl|hongfuzz|standalone) echo "fuzz/build" ;;
+{{/if}}
     *)         return 1 ;;
   esac
 }
@@ -66,16 +70,21 @@ ensure_seeds() {
 
 build_engine() {
   local engine="$1"
-  local preset="fuzz-build-$engine"
-  echo "+ cmake --workflow --preset $preset"
-  cmake --workflow --preset "$preset"
+{{#if (eq integration 'cmake')}}
+  local preset="fuzz-$engine"
+  echo "+ cmake --preset $preset && cmake --build --preset $preset"
+  cmake --preset "$preset" && cmake --build --preset "$preset"
+{{else if (eq integration 'make')}}
+  echo "+ make fuzz-$engine"
+  make "fuzz-$engine"
+{{/if}}
 }
 
 build_all() {
   build_engine libfuzzer
   build_engine afl
   build_engine hongfuzz
-  build_engine native
+  build_engine standalone
 }
 
 # -------- Test (quick sanity) --------
@@ -86,7 +95,7 @@ test_libfuzzer() {
   while IFS= read -r bin; do
     [[ -z "$bin" ]] && continue
     local name; name="$(basename "$bin")"
-    local corpus="build-fuzz-libfuzzer/corpus-$name"
+    local corpus="fuzz/corpus-$name"
     mkdir -p "$corpus"
     echo "+ [libfuzzer] $name for ${secs}s"
     "$bin" -max_total_time="$secs" -print_final_stats=1 "$corpus" fuzz/seeds || true
@@ -100,7 +109,7 @@ test_afl() {
     return 0
   fi
   ensure_seeds
-  local out="build-afl/out"
+  local out="fuzz/afl-out"
   mkdir -p "$out"
   while IFS= read -r bin; do
     [[ -z "$bin" ]] && continue
@@ -119,7 +128,7 @@ test_hongfuzz() {
     return 0
   fi
   ensure_seeds
-  local out="build-hongfuzz/out"
+  local out="fuzz/hongfuzz-out"
   mkdir -p "$out"
   while IFS= read -r bin; do
     [[ -z "$bin" ]] && continue
@@ -131,17 +140,17 @@ test_hongfuzz() {
   done < <(find_bins hongfuzz)
 }
 
-test_native() {
+test_standalone() {
   local secs="${1:-10}"
   ensure_seeds
   while IFS= read -r bin; do
     [[ -z "$bin" ]] && continue
     local name; name="$(basename "$bin")"
-    echo "+ [native] smoke-test $name using seeds (timeout ${secs}s each)"
+    echo "+ [standalone] smoke-test $name using seeds (timeout ${secs}s each)"
     for s in fuzz/seeds/*; do
       timeout -k 1 "${secs}"s bash -c "cat \"$s\" | \"$bin\"" || true
     done
-  done < <(find_bins native)
+  done < <(find_bins standalone)
 }
 
 test_all() {
@@ -149,7 +158,7 @@ test_all() {
   test_libfuzzer "$secs"
   test_afl "$secs"
   test_hongfuzz "$secs"
-  test_native "$secs"
+  test_standalone "$secs"
   echo "Quick tests complete."
 }
 
@@ -177,7 +186,7 @@ case "$cmd" in
         libfuzzer) test_libfuzzer "$secs" ;;
         afl)       test_afl "$secs" ;;
         hongfuzz)  test_hongfuzz "$secs" ;;
-        native)    test_native "$secs" ;;
+        standalone) test_standalone "$secs" ;;
       esac
     fi
     ;;

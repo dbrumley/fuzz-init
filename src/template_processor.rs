@@ -192,7 +192,7 @@ fn process_embedded_template_directory(
 
         // Check if this file should be templated
         let file_config = get_file_config(metadata, &current_relative_path);
-        let should_template = file_config.map_or(true, |fc| fc.template);
+        let should_template = file_config.map_or(true, |fc| fc.should_template());
 
         // Template the filename if needed
         let output_filename = if should_template {
@@ -225,7 +225,7 @@ fn process_embedded_template_directory(
         fs::write(&output_path, content)?;
 
         // Set executable permissions if needed
-        if file_config.map_or(false, |fc| fc.executable) {
+        if file_config.map_or(false, |fc| fc.is_executable()) {
             set_executable(&output_path)?;
         }
     }
@@ -280,7 +280,34 @@ fn get_file_config<'a>(
     metadata: Option<&'a TemplateMetadata>,
     relative_path: &str,
 ) -> Option<&'a FileConfig> {
-    metadata?.files.iter().find(|f| f.path == relative_path)
+    metadata?.files.iter().find(|f| match f {
+        FileConfig::Single { path, .. } => path == relative_path,
+        FileConfig::Multiple { paths, .. } => paths.contains(&relative_path.to_string()),
+    })
+}
+
+// Helper methods for FileConfig
+impl FileConfig {
+    fn should_template(&self) -> bool {
+        match self {
+            FileConfig::Single { template, .. } => *template,
+            FileConfig::Multiple { template, .. } => *template,
+        }
+    }
+    
+    fn is_executable(&self) -> bool {
+        match self {
+            FileConfig::Single { executable, .. } => *executable,
+            FileConfig::Multiple { executable, .. } => *executable,
+        }
+    }
+    
+    fn condition(&self) -> Option<&String> {
+        match self {
+            FileConfig::Single { condition, .. } => condition.as_ref(),
+            FileConfig::Multiple { condition, .. } => condition.as_ref(),
+        }
+    }
 }
 
 fn should_skip_file(
@@ -298,7 +325,7 @@ fn should_include_file(
 ) -> bool {
     // First check explicit file configuration
     if let Some(config) = get_file_config(metadata, relative_path) {
-        if let Some(condition) = &config.condition {
+        if let Some(condition) = config.condition() {
             return evaluate_condition(condition, data);
         }
     }
@@ -506,7 +533,7 @@ fn process_filesystem_directory_recursive(
 
             // Check if this file should be templated
             let file_config = get_file_config(metadata, &current_relative_path);
-            let should_template = file_config.map_or(true, |fc| fc.template);
+            let should_template = file_config.map_or(true, |fc| fc.should_template());
 
             // Template the filename if needed
             let output_filename = if should_template {
@@ -538,7 +565,7 @@ fn process_filesystem_directory_recursive(
             }
 
             // Set executable permissions if needed
-            if file_config.map_or(false, |fc| fc.executable) {
+            if file_config.map_or(false, |fc| fc.is_executable()) {
                 set_executable(&output_path)?;
             }
         }

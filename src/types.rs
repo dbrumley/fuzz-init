@@ -75,14 +75,28 @@ pub struct VariableConfig {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct FileConfig {
-    pub path: String,
-    #[serde(default)]
-    pub executable: bool,
-    #[serde(default = "default_true")]
-    pub template: bool,
-    #[serde(default)]
-    pub condition: Option<String>,
+#[serde(untagged)]
+pub enum FileConfig {
+    // Legacy single path format
+    Single {
+        path: String,
+        #[serde(default)]
+        executable: bool,
+        #[serde(default = "default_true")]
+        template: bool,
+        #[serde(default)]
+        condition: Option<String>,
+    },
+    // New multiple paths format
+    Multiple {
+        paths: Vec<String>,
+        #[serde(default)]
+        executable: bool,
+        #[serde(default = "default_true")]
+        template: bool,
+        #[serde(default)]
+        condition: Option<String>,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -138,4 +152,6 @@ pub struct ValidationCommand {
     pub env: Option<HashMap<String, String>>,
     #[serde(default = "default_true")]
     pub expect_success: bool,
+    #[serde(default)]
+    pub verify_files: Option<Vec<String>>,
 }

@@ -36,28 +36,24 @@ OBJ_DIR := $(BUILD_DIR)/obj
 BIN_DIR := $(BUILD_DIR)/bin
 
 # Standard flags for normal builds
-CXXFLAGS := -g -O0 -I$(INC_DIR) -std=c++11
+CXXFLAGS := -g -O0 -I$(INC_DIR) -std=c++17
 
 # Library and executable definitions
-LIB_SOURCES := $(SRC_DIR)/lib.cpp
+LIB_SOURCES := $(SRC_DIR)/mylib.cpp
 MAIN_SRC := $(SRC_DIR)/main.cpp
 
-# Standard library naming (no fuzzer-specific suffixes)
-LIBRARY := $(BUILD_DIR)/lib{{project_name}}.a
-FUZZ_LIBRARY := $(BUILD_DIR)/fuzz/lib{{project_name}}.a
-STANDALONE_LIBRARY := $(BUILD_DIR)/standalone/lib{{project_name}}.a
-TARGET := $(BIN_DIR)/{{target_name}}
+# Standard library naming to match CMake
+LIBRARY := $(BUILD_DIR)/libmylib.a
+TARGET := $(BIN_DIR)/hellofuzz
 
 # Object file paths
 LIB_OBJECTS := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(LIB_SOURCES))
-FUZZ_OBJECTS := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/fuzz/%.o,$(LIB_SOURCES))
-STANDALONE_OBJECTS := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/standalone/%.o,$(LIB_SOURCES))
 
 # =============================================================================
 # Main Targets
 # =============================================================================
 
-.PHONY: all clean test lib lib-fuzz lib-standalone fuzz fuzz-test help
+.PHONY: all clean test lib fuzz fuzz-test help
 .PHONY: fuzz-libfuzzer fuzz-afl fuzz-honggfuzz fuzz-standalone
 
 .DEFAULT_GOAL := all
@@ -68,14 +64,8 @@ all: $(LIBRARY) $(TARGET)
 # Library Build Targets
 # =============================================================================
 
-# Normal library (no instrumentation)
+# Normal library
 lib: $(LIBRARY)
-
-# Instrumented library for fuzzing (works with libFuzzer, AFL, HonggFuzz)
-lib-fuzz: $(FUZZ_LIBRARY)
-
-# Standalone library (no sanitizers, for Mayhem/basic usage)
-lib-standalone: $(STANDALONE_LIBRARY)
 
 # =============================================================================
 # Library Build Rules
@@ -85,24 +75,8 @@ $(LIBRARY): $(LIB_OBJECTS)
 	@mkdir -p $(BUILD_DIR)
 	$(AR) rcs $@ $^
 
-$(FUZZ_LIBRARY): $(FUZZ_OBJECTS)
-	@mkdir -p $(BUILD_DIR)/fuzz
-	$(AR) rcs $@ $^
-
-$(STANDALONE_LIBRARY): $(STANDALONE_OBJECTS)
-	@mkdir -p $(BUILD_DIR)/standalone
-	$(AR) rcs $@ $^
-
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p $(OBJ_DIR)
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
-
-$(OBJ_DIR)/fuzz/%.o: $(SRC_DIR)/%.cpp
-	@mkdir -p $(OBJ_DIR)/fuzz
-	$(FUZZ_CXX) $(FUZZ_FLAGS) $(CXXFLAGS) -c -o $@ $<
-
-$(OBJ_DIR)/standalone/%.o: $(SRC_DIR)/%.cpp
-	@mkdir -p $(OBJ_DIR)/standalone
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 # =============================================================================
@@ -133,111 +107,63 @@ test:
 {{/unless}}
 
 # =============================================================================
-# Universal Fuzzing Targets
+# Fuzzing Targets
 # =============================================================================
 
-# Build all compatible fuzzers based on detected environment
-fuzz: fuzz-info
-	@echo "🔨 Building all compatible fuzzing targets..."
-ifeq ($(HAVE_CLANG),yes)
-	@echo "✅ Building instrumented library for fuzzing..."
-	@$(MAKE) lib-fuzz
-	@echo "✅ Building libFuzzer target..."
-	@$(MAKE) fuzz-libfuzzer
-ifeq ($(HAVE_AFL),yes)
-	@echo "✅ Building AFL target..."
-	@$(MAKE) fuzz-afl
-endif
-ifeq ($(HAVE_HFUZZ),yes)
-	@echo "✅ Building HonggFuzz target..."
-	@$(MAKE) fuzz-honggfuzz
-endif
-	@echo "✅ Building standalone target..."
-	@$(MAKE) fuzz-standalone-target
-else
-	@echo "⚠️  Building basic fuzzing targets (no clang++ found)..."
-	@$(MAKE) lib-standalone
-ifeq ($(HAVE_AFL),yes)
-	@echo "✅ Building AFL target..."
-	@$(MAKE) fuzz-afl-basic
-endif
-	@echo "✅ Building standalone target..."
-	@$(MAKE) fuzz-standalone-target
-endif
+# Build fuzz targets (delegates to fuzz/Makefile)
+fuzz: $(LIBRARY)
+	@echo "🔨 Building fuzzing targets..."
+	@$(MAKE) -C fuzz all
 	@echo "🎯 Fuzzing build complete!"
 
-# Individual fuzzer targets with smart error handling
-fuzz-libfuzzer: lib-fuzz
-ifeq ($(HAVE_CLANG),yes)
-	@$(MAKE) -C fuzz libfuzzer LIBRARY_PATH=../$(FUZZ_LIBRARY)
-else
-	@echo "❌ libFuzzer requires clang++ but only found: $(CXX)"
-	@echo "💡 Available options:"
-ifeq ($(HAVE_AFL),yes)
-	@echo "   make fuzz-afl        # AFL fuzzing (works with $(CXX))"
-endif
-	@echo "   make fuzz-standalone # Standalone binary fuzzing"
-	@echo "📦 Install clang to use libFuzzer:"
-	@echo "   Ubuntu/Debian: sudo apt install clang"
-	@echo "   macOS:         xcode-select --install"
-	@false
-endif
+# Per-fuzzer targets that rebuild library with appropriate compiler/flags
+fuzz-libfuzzer:
+	@echo "🔨 Building library and fuzz targets for libFuzzer..."
+	@if [ "$(HAVE_CLANG)" = "yes" ]; then \
+	  $(MAKE) clean-lib && \
+	  $(MAKE) lib CXX=clang++ CXXFLAGS="-g -O1 -fsanitize=address,undefined -I$(INC_DIR) -std=c++17" && \
+	  $(MAKE) -C fuzz libfuzzer LIBPART=../$(LIBRARY) CXX_CLANG=clang++; \
+	else \
+	  echo "⏭️  libFuzzer requires clang++"; \
+	fi
 
-fuzz-afl: lib-fuzz
-ifeq ($(HAVE_AFL),yes)
-	@$(MAKE) -C fuzz afl LIBRARY_PATH=../$(FUZZ_LIBRARY)
-else ifeq ($(HAVE_CLANG),yes)
-	@$(MAKE) -C fuzz afl LIBRARY_PATH=../$(FUZZ_LIBRARY)
-else
-	@$(MAKE) fuzz-afl-basic
-endif
+fuzz-afl:
+	@echo "🔨 Building library and fuzz targets for AFL++..."
+	@if [ "$(HAVE_AFL)" = "yes" ]; then \
+	  $(MAKE) clean-lib && \
+	  $(MAKE) lib CXX=afl-clang-fast++ CXXFLAGS="-g -O1 -fsanitize=address,undefined -I$(INC_DIR) -std=c++17" && \
+	  $(MAKE) -C fuzz afl LIBPART=../$(LIBRARY) CXX_AFL=afl-clang-fast++; \
+	else \
+	  echo "⏭️  AFL++ requires afl-clang-fast++"; \
+	fi
 
-fuzz-afl-basic: lib-standalone
-	@echo "⚠️  Building AFL with basic instrumentation (no sanitizers)"
-	@$(MAKE) -C fuzz afl LIBRARY_PATH=../$(STANDALONE_LIBRARY) FUZZ_MODE=basic
+fuzz-hongfuzz:
+	@echo "🔨 Building library and fuzz targets for HonggFuzz..."
+	@if [ "$(HAVE_HFUZZ)" = "yes" ]; then \
+	  $(MAKE) clean-lib && \
+	  $(MAKE) lib CXX=hfuzz-clang++ CXXFLAGS="-g -O1 -fsanitize=address,undefined -I$(INC_DIR) -std=c++17" && \
+	  $(MAKE) -C fuzz hongfuzz LIBPART=../$(LIBRARY) CXX_HFUZZ=hfuzz-clang++; \
+	else \
+	  echo "⏭️  HonggFuzz requires hfuzz-clang++"; \
+	fi
 
-fuzz-honggfuzz: lib-fuzz
-ifeq ($(HAVE_HFUZZ),yes)
-	@$(MAKE) -C fuzz honggfuzz LIBRARY_PATH=../$(FUZZ_LIBRARY)
-else
-	@echo "❌ HonggFuzz not found. Install honggfuzz to use this target."
-	@echo "💡 Available alternatives: make fuzz-libfuzzer, make fuzz-afl"
-	@false
-endif
+fuzz-standalone:
+	@echo "🔨 Building library and fuzz targets for standalone/native..."
+	$(MAKE) clean-lib && \
+	$(MAKE) lib CXXFLAGS="-g -O1 -I$(INC_DIR) -std=c++17" && \
+	$(MAKE) -C fuzz standalone LIBPART=../$(LIBRARY)
 
-fuzz-standalone-target: lib-standalone
-	@$(MAKE) -C fuzz standalone LIBRARY_PATH=../$(STANDALONE_LIBRARY)
+# Clean just the library
+clean-lib:
+	rm -f $(LIBRARY) $(LIB_OBJECTS)
 
-# Legacy target names for backward compatibility
-fuzz-standalone: fuzz-standalone-target
-
-# Fuzzing utilities
-fuzz-test: lib-fuzz
-	@$(MAKE) -C fuzz test LIBRARY_PATH=../$(FUZZ_LIBRARY)
-
+# Clean fuzz targets
 fuzz-clean:
 	@$(MAKE) -C fuzz clean
 
+# Show fuzz environment info
 fuzz-info:
-	@echo "🔍 Fuzzing environment detected:"
-	@echo "   Compiler:     $(CXX)"
-	@echo "   Fuzz compiler: $(FUZZ_CXX)"
-	@echo "   Fuzz mode:    $(FUZZ_MODE)"
-ifeq ($(HAVE_CLANG),yes)
-	@echo "   clang++:      ✅ Available"
-else
-	@echo "   clang++:      ❌ Not found"
-endif
-ifeq ($(HAVE_AFL),yes)
-	@echo "   AFL++:        ✅ Available"
-else
-	@echo "   AFL++:        ❌ Not found"
-endif
-ifeq ($(HAVE_HFUZZ),yes)
-	@echo "   HonggFuzz:    ✅ Available"
-else
-	@echo "   HonggFuzz:    ❌ Not found"
-endif
+	@$(MAKE) -C fuzz env-summary
 
 # =============================================================================
 # Cleanup
@@ -257,20 +183,21 @@ clean:
 # =============================================================================
 
 help:
-	@echo "Universal Makefile for {{project_name}} - Environment-driven fuzzing"
+	@echo "Makefile for {{project_name}}"
 	@echo ""
 	@echo "Main targets:"
-	@echo "  all              - Build normal library and executable"
-	@echo "  lib              - Build normal library"
-	@echo "  lib-fuzz         - Build instrumented library (for fuzzing)"
-	@echo "  lib-standalone   - Build standalone library (no sanitizers)"
+	@echo "  all              - Build library and executable"
+	@echo "  lib              - Build library only"
+	@echo "  $(TARGET)        - Build executable"
 	@echo ""
 	@echo "Fuzzing targets:"
-	@echo "  fuzz             - Build all compatible fuzzers (recommended)"
-	@echo "  fuzz-libfuzzer   - Build libFuzzer target (requires clang++)"
-	@echo "  fuzz-afl         - Build AFL target"
-	@echo "  fuzz-honggfuzz   - Build HonggFuzz target (requires honggfuzz)"
-	@echo "  fuzz-standalone  - Build standalone fuzzer binary"
+	@echo "  fuzz             - Build all fuzz targets (using single library)"
+	@echo "  fuzz-libfuzzer   - Rebuild library and fuzz with clang/ASan/UBSan"
+	@echo "  fuzz-afl         - Rebuild library and fuzz with AFL++ instrumentation"
+	@echo "  fuzz-hongfuzz    - Rebuild library and fuzz with HonggFuzz instrumentation"
+	@echo "  fuzz-standalone  - Rebuild library and fuzz without instrumentation"
+	@echo "  fuzz-info        - Show detected fuzzing environment"
+	@echo "  fuzz-clean       - Clean fuzz build artifacts"
 	@echo ""
 	@echo "Testing and utilities:"
 {{#unless minimal}}
@@ -279,8 +206,6 @@ help:
 {{else}}
 	@echo "  test             - Show testing info (minimal mode)"
 {{/unless}}
-	@echo "  fuzz-test        - Run fuzzer smoke test"
-	@echo "  fuzz-info        - Show detected fuzzing environment"
 	@echo "  clean            - Remove all build artifacts"
 	@echo ""
-	@echo "Current environment: $(FUZZ_MODE) mode with $(FUZZ_CXX)"
+	@echo "Run 'make -C fuzz help' for detailed fuzzing options"

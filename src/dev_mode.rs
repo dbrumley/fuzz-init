@@ -2,6 +2,7 @@ use crate::cli::Args;
 use crate::template_processor::*;
 use crate::types::*;
 use anyhow::{anyhow, Result};
+use handlebars::Handlebars;
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -354,6 +355,15 @@ async fn generate_test_project(
     Ok(())
 }
 
+fn create_template_vars(config: &TestConfiguration, project_dir: &Path) -> serde_json::Value {
+    json!({
+        "project_dir": project_dir.to_str().unwrap(),
+        "integration": config.integration,
+        "minimal": config.minimal,
+        "language": config.language,
+    })
+}
+
 async fn run_validation_commands(
     project_dir: &Path,
     config: &TestConfiguration,
@@ -364,12 +374,7 @@ async fn run_validation_commands(
     let handlebars = setup_handlebars();
     
     // Create context for variable interpolation
-    let context = json!({
-        "project_dir": project_dir.to_str().unwrap(),
-        "integration": config.integration,
-        "minimal": config.minimal,
-        "language": config.language,
-    });
+    let context = create_template_vars(config, project_dir);
     
     // Find and execute matching validation commands
     let mut found_command = false;
@@ -439,6 +444,32 @@ async fn run_validation_commands(
                     step.join(" "),
                     output.status.code()
                 ));
+            }
+        }
+        
+        // Verify files if specified
+        if let Some(verify_files) = &command.verify_files {
+            build_log.push_str(&format!("\n  Verifying files for command '{}':\n", command.name));
+            
+            // Process templates in file paths
+            let template_vars = create_template_vars(config, project_dir);
+            let handlebars = Handlebars::new();
+            
+            for file_pattern in verify_files {
+                let processed_pattern = handlebars.render_template(file_pattern, &template_vars)
+                    .map_err(|e| anyhow!("Failed to process file pattern '{}': {}", file_pattern, e))?;
+                
+                let file_path = working_dir.join(&processed_pattern);
+                
+                if file_path.exists() {
+                    build_log.push_str(&format!("    ✓ Found: {}\n", processed_pattern));
+                } else {
+                    build_log.push_str(&format!("    ✗ Missing: {}\n", processed_pattern));
+                    return Err(anyhow!(
+                        "Required file '{}' was not created by the build",
+                        processed_pattern
+                    ));
+                }
             }
         }
     }

@@ -17,17 +17,21 @@ INCLUDES   := -I./include -I../include
 COMMON     := -g -O1 -std=c++17 -Wall -Wextra -fno-omit-frame-pointer -fno-sanitize-recover=all
 SAN        := -fsanitize=address,undefined
 
-# auto-detect all harnesses
-HARNESS_SRCS   := $(wildcard src/*.cpp)
+# auto-detect all harnesses (can be overridden)
+HARNESS_SRCS   ?= $(wildcard src/*.cpp)
 HARNESS_NAMES  := $(basename $(notdir $(HARNESS_SRCS)))
 
-# optional: auto-detect a static lib above us (skip fuzz/.git)
-DETECTED_LIB := $(shell find .. -maxdepth 3 -name "lib*.a" ! -path "*/fuzz/*" ! -path "*/.git/*" 2>/dev/null | head -1)
-ifneq ($(strip $(DETECTED_LIB)),)
-  LIBPART := $(DETECTED_LIB)
-else
-  LIBPART :=
-endif
+# Link against parent library (libmylib.a)
+# In full mode: ../build/libmylib.a
+# In minimal mode: user should provide their own library
+# Can be overridden by passing LIBPART parameter
+{{#if minimal}}
+# Minimal mode: Look for user's library
+LIBPART ?= $(shell find .. -maxdepth 3 -name "libmylib.a" -o -name "lib*.a" | grep -v "/fuzz/" | head -1)
+{{else}}
+# Full mode: Use our parent library
+LIBPART ?= ../build/libmylib.a
+{{/if}}
 
 # concrete targets per harness
 LIBFUZZER_BINS := $(foreach h,$(HARNESS_NAMES),$(BUILD_DIR)/$(h)-libfuzzer)
@@ -35,8 +39,14 @@ AFL_BINS       := $(foreach h,$(HARNESS_NAMES),$(BUILD_DIR)/$(h)-afl)
 HFUZZ_BINS     := $(foreach h,$(HARNESS_NAMES),$(BUILD_DIR)/$(h)-hongfuzz)
 PLAIN_BINS     := $(foreach h,$(HARNESS_NAMES),$(BUILD_DIR)/$(h)-standalone)
 
-.PHONY: all env-summary summary clean
+.PHONY: all env-summary summary clean help libfuzzer afl hongfuzz standalone
 all: env-summary $(LIBFUZZER_BINS) $(AFL_BINS) $(HFUZZ_BINS) $(PLAIN_BINS) summary
+
+# Individual fuzzer targets
+libfuzzer: env-summary $(LIBFUZZER_BINS) summary
+afl: env-summary $(AFL_BINS) summary
+hongfuzz: env-summary $(HFUZZ_BINS) summary
+standalone: env-summary $(PLAIN_BINS) summary
 
 # ---------- one-time environment summary ----------
 env-summary:
@@ -156,3 +166,22 @@ summary:
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+help:
+	@echo "Fuzz Makefile - Builds multiple fuzzer backends per harness"
+	@echo ""
+	@echo "Targets:"
+	@echo "  all          - Build all fuzz targets for all harnesses"
+	@echo "  env-summary  - Show detected environment"
+	@echo "  clean        - Remove build artifacts"
+	@echo ""
+	@echo "The Makefile will:"
+	@echo "  1. Auto-detect harnesses in src/*.cpp"
+	@echo "  2. Build each harness with available fuzzers:"
+	@echo "     - libfuzzer  (requires clang++)"
+	@echo "     - afl        (requires afl-clang-fast++)"
+	@echo "     - hongfuzz   (requires hfuzz-clang++)"
+	@echo "     - standalone (always built)"
+	@echo ""
+	@echo "Output binaries: build/<harness>-<fuzzer>"
+	@echo "Example: build/fuzz_harness_1-libfuzzer"

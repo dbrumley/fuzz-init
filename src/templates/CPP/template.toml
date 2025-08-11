@@ -9,27 +9,18 @@ version = "1.0.0"
 project_name = { required = true, description = "Name of the fuzzing project" }
 target_name = { default = "target1", description = "Name of the fuzz target" }
 
-
 # Supported integration types
 [integrations]
-#supported = ["script", "make", "cmake"]
 supported = ["make", "cmake"]
-default = "make"
+default = "cmake"
 
 [[integrations.options]]
 name = "make"
 description = "Makefile-based build system integration"
 
-
-[[integrations.options]]
-name = "script"
-description = "Self-contained fuzzing setup with build.sh script"
-
-
 [[integrations.options]]
 name = "cmake"
 description = "CMake-based build system integration"
-
 
 # File conventions - smart defaults based on directory and extension
 [file_conventions]
@@ -42,123 +33,160 @@ full_mode_only = ["src", "include", "test", "test_data"]
 # File extensions that should be templated
 template_extensions = [".cpp", ".hpp", ".c", ".h", ".md", ".sh", ".txt"]
 
-
 # File extensions that should not be templated
 no_template_extensions = [".dict", ".bin"]
 
-# Integration-specific files
-[[files]]
-path = "fuzz/build.sh"
-condition = "integration == 'script'"
-executable = true
+# ===== FILE CONFIGURATIONS =====
 
+# Integration-specific fuzz files
 [[files]]
-path = "fuzz/Makefile"
 condition = "integration == 'make'"
+paths = ["fuzz/Makefile"]
 
 [[files]]
-path = "fuzz/CMakeLists.txt"
 condition = "integration == 'cmake'"
-
-[[files]]
-path = "cmake/Fuzzing.cmake"
-condition = "integration == 'cmake'"
-
+paths = [
+    "fuzz/CMakeLists.txt",
+    "fuzz/cmake/afl.cmake",
+    "fuzz/cmake/hongfuzz.cmake", 
+    "fuzz/cmake/libfuzzer.cmake",
+    "fuzz/cmake/standalone.cmake"
+]
 
 # Root-level build files (full mode only)
 [[files]]
-path = "Makefile"
 condition = "integration == 'make' && minimal == false"
+paths = ["Makefile"]
 
 [[files]]
-path = "CMakeLists.txt"
 condition = "integration == 'cmake' && minimal == false"
+paths = ["CMakeLists.txt", "CMakePresets.json"]
 
+# CMake presets for minimal mode
 [[files]]
-path = "build.sh"
-condition = "integration == 'script' && minimal == false"
-executable = true
-
-[[files]]
-path = "CMakePresets.json"
-condition = "integration == 'cmake' && minimal == false"
-
-
-[[files]]
-path = "fuzz/CMakePresets.json"
 condition = "integration == 'cmake' && minimal == true"
+paths = ["fuzz/CMakePresets.json"]
 
-
-# Dictionary files - template filename but not content
+# Executable scripts (full mode only)
 [[files]]
-path = "fuzz/dictionaries/fuzz_harness.dict"
+condition = "minimal == false"
+paths = ["fuzz.sh"]
+executable = true
 template = true
 
-# Root-level tutorial files (full mode only)
+# Tutorial and documentation (full mode only)
 [[files]]
-path = "TUTORIAL.md"
-condition = "minimal == false" 
+condition = "minimal == false"
+paths = ["TUTORIAL.md", "Dockerfile"]
 
+# Dictionary file - uses template for filename but not content
 [[files]]
-path = "fuzz.sh"
-condition = "minimal == false" 
-executable = true 
+path = "fuzz/dictionaries/{{target_name}}.dict"
+template = true 
 
-# Directory creation rules
+# ===== DIRECTORY CONFIGURATIONS =====
+
 [[directories]]
-path = "fuzz/testsuite/fuzz_harness_1"
+path = "fuzz/testsuite/{{target_name}}"
 create_empty = true  # Create empty directory for corpus files
 
+# ===== POST-GENERATION MESSAGE =====
 
-
-# Post-generation message
 [post_generation_message]
 content = """
-To Be done. 
+🎯 {{project_name}} C++ Fuzzing Project Created!
+
+{{#if minimal}}
+   Your fuzzing harness is ready in the fuzz directory. 
+{{else}}
+📁 Full mode: Complete project with example library and fuzzing setup.
+{{/if}}
+
+🚀 Quick Start:
+{{#if minimal}}
+1. cd {{project_name}}/fuzz
+2. Edit src/{{project_name}}.cpp to fuzz your actual code
+3. {{#if (eq integration 'make')}}make{{else if (eq integration 'cmake')}}cmake --preset fuzz-libfuzzer && cmake --build --preset fuzz-libfuzzer{{/if}}
+{{else}}
+1. cd {{project_name}}
+2. {{#if (eq integration 'make')}}make && make fuzz{{else if (eq integration 'cmake')}}cmake --preset fuzz-libfuzzer && cmake --build --preset fuzz-libfuzzer{{/if}}
+3. ./fuzz/{{project_name}}-libfuzzer fuzz/testsuite/
+{{/if}}
+
+📚 Documentation:
+- README.md - Quick reference
+{{#if minimal}}- INTEGRATION.md - How to integrate with your project{{else}}- TUTORIAL.md - Complete fuzzing tutorial{{/if}}
+
+Happy fuzzing! 🐛
 """
 
-# Post-generation hooks (optional future feature)
-[hooks]
-# post_generate = ["chmod +x fuzz/build.sh"]
+# ===== VALIDATION COMMANDS =====
 
-# Validation commands for dev-mode testing
 [validation]
 
-# CMake with presets (full mode)
+# Full mode validation - CMake
 [[validation.commands]]
-name = "build-cmake-preset-full"
+name = "cmake-full"
 condition = "integration == 'cmake' && minimal == false"
 dir = "{{project_dir}}"
 steps = [
-    ["cmake", "--preset", "fuzz-libfuzzer"],
-    ["cmake", "--build", "--preset", "fuzz-libfuzzer"]
+    ["./fuzz.sh", "build"]
+]
+verify_files = [
+    "build/libfuzzer/bin/fuzz_harness_1-libfuzzer",
+    "build/afl/bin/fuzz_harness_1-afl",
+    "build/hongfuzz/bin/fuzz_harness_1-hongfuzz",
+    "build/standalone/bin/fuzz_harness_1-native"
 ]
 
-# CMake with presets (minimal mode)
+# Full mode validation - Make
 [[validation.commands]]
-name = "build-cmake-preset-minimal"
+name = "make-full"
+condition = "integration == 'make' && minimal == false"
+dir = "{{project_dir}}"
+steps = [
+    ["./fuzz.sh", "build"]
+]
+verify_files = [
+    "fuzz/build/fuzz_harness_1-libfuzzer",
+    "fuzz/build/fuzz_harness_1-afl",
+    "fuzz/build/fuzz_harness_1-hongfuzz",
+    "fuzz/build/fuzz_harness_1-standalone"
+]
+
+# Minimal mode validation - CMake
+[[validation.commands]]
+name = "cmake-minimal"
 condition = "integration == 'cmake' && minimal == true"
 dir = "{{project_dir}}/fuzz"
 steps = [
     ["cmake", "--preset", "fuzz-libfuzzer"],
-    ["cmake", "--build", "--preset", "fuzz-libfuzzer"]
+    ["cmake", "--build", "--preset", "fuzz-libfuzzer"],
+    ["cmake", "--preset", "fuzz-afl"],
+    ["cmake", "--build", "--preset", "fuzz-afl"],
+    ["cmake", "--preset", "fuzz-hongfuzz"],
+    ["cmake", "--build", "--preset", "fuzz-hongfuzz"],
+    ["cmake", "--preset", "fuzz-standalone"],
+    ["cmake", "--build", "--preset", "fuzz-standalone"]
+]
+verify_files = [
+    "build/libfuzzer/bin/fuzz_harness_1-libfuzzer",
+    "build/afl/bin/fuzz_harness_1-afl",
+    "build/hongfuzz/bin/fuzz_harness_1-hongfuzz",
+    "build/standalone/bin/fuzz_harness_1-native"
 ]
 
-# Make (full mode)
+# Minimal mode validation - Make
 [[validation.commands]]
-name = "build-make-full"
-condition = "integration == 'make' && minimal == false"
-dir = "{{project_dir}}"
-steps = [
-    ["make"],
-    ["make", "fuzz"]
-]
-
-# Make (minimal mode)
-[[validation.commands]]
-name = "build-make-minimal"
+name = "make-minimal"
 condition = "integration == 'make' && minimal == true"
 dir = "{{project_dir}}/fuzz"
 steps = [
     ["make"]
+]
+verify_files = [
+    "build/fuzz_harness_1-libfuzzer",
+    "build/fuzz_harness_1-afl",
+    "build/fuzz_harness_1-hongfuzz",
+    "build/fuzz_harness_1-standalone"
 ]

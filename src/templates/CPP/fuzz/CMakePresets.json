@@ -15,11 +15,11 @@
       }
     },
     {
-      "name": "fuzz-native",
-      "displayName": "Fuzz (binary/native)",
+      "name": "fuzz-standalone",
+      "displayName": "Fuzz (standalone)",
       "inherits": "base",
-      "binaryDir": "${sourceDir}/build/native",
-      "toolchainFile": "cmake/native.cmake"
+      "binaryDir": "${sourceDir}/build/standalone",
+      "toolchainFile": "cmake/standalone.cmake"
     },
     {
       "name": "fuzz-libfuzzer",
@@ -45,8 +45,8 @@
   ],
   "buildPresets": [
     {
-      "name": "fuzz-native",
-      "configurePreset": "fuzz-native"
+      "name": "fuzz-standalone",
+      "configurePreset": "fuzz-standalone"
     },
     {
       "name": "fuzz-libfuzzer",
@@ -68,15 +68,15 @@
   ],
   "workflowPresets": [
     {
-      "name": "fuzz-build-native",
+      "name": "fuzz-build-standalone",
       "steps": [
         {
           "type": "configure",
-          "name": "fuzz-native"
+          "name": "fuzz-standalone"
         },
         {
           "type": "build",
-          "name": "fuzz-native"
+          "name": "fuzz-standalone"
         }
       ]
     },

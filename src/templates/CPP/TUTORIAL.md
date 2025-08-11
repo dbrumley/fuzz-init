@@ -4,10 +4,10 @@ Welcome to {{project_name}}!
 
 ## Quick Start
 
-To build the application:
+To build the application and all fuzzers:
 
 ```
-fuzz.sh
+fuzz.sh build
 ```
 
 
