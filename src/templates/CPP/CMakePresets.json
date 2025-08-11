@@ -13,7 +13,7 @@
       }
     },
     {
-      "name": "fuzz-bin",
+      "name": "fuzz-native",
       "displayName": "Fuzz (binary/native)",
       "inherits": "base",
       "binaryDir": "${sourceDir}/build-fuzz-bin",
@@ -43,8 +43,8 @@
   ],
   "buildPresets": [
     {
-      "name": "fuzz-bin",
-      "configurePreset": "fuzz-bin"
+      "name": "fuzz-native",
+      "configurePreset": "fuzz-native"
     },
     {
       "name": "fuzz-libfuzzer",

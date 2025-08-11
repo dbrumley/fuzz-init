@@ -20,19 +20,19 @@ default = "make"
 [[integrations.options]]
 name = "make"
 description = "Makefile-based build system integration"
-files = ["fuzz/Makefile", "fuzz/INTEGRATION.md"]
+files = []
 
 [[integrations.options]]
 name = "script"
 description = "Self-contained fuzzing setup with build.sh script"
-files = ["fuzz/build.sh"]
-
+files = []
 
 
 [[integrations.options]]
 name = "cmake"
 description = "CMake-based build system integration"
-files = ["fuzz/CMakeLists.txt", "fuzz/INTEGRATION.md"]
+files = []
+
 
 # File conventions - smart defaults based on directory and extension
 [file_conventions]
@@ -43,7 +43,7 @@ always_include = ["fuzz"]
 full_mode_only = ["src", "include", "test", "test_data"]
 
 # File extensions that should be templated
-template_extensions = [".cpp", ".hpp", ".c", ".h", ".md", ".sh", ".toml", ".txt"]
+template_extensions = [".cpp", ".hpp", ".c", ".h", ".md", ".sh", ".txt"]
 
 # File extensions that should be executable
 executable_extensions = [".sh"]
