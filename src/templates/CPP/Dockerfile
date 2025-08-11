@@ -10,14 +10,8 @@ COPY . /app
 
 {{#unless minimal}}
 # Build the main application library first
-RUN make lib
-
-# Run unit tests to verify library functionality
-RUN make test
-
-# Build the fuzzer using the appropriate target
-RUN make fuzz-{{default_fuzzer}}
+RUN ./fuzz.sh build
 {{else}}
 # Minimal mode - just build the fuzzer
-RUN cd fuzz && make
+RUN cd fuzz && ./fuzz.sh build 
 {{/unless}}

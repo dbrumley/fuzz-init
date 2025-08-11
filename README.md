@@ -12,8 +12,8 @@ A CLI tool for scaffolding fuzzing projects that addresses common developer pain
 
 Setting up fuzzing infrastructure often involves:
 
-- **Build system complexity**: Integrating fuzzers with existing Makefiles,
-  CMake, or custom build systems
+- **Build system complexity**: Integrating fuzzers with existing build like
+  `make`, `cmake`, `cargo`, and so on. 
 - **Fuzzer lock-in**: Code that works with one fuzzer (e.g., libFuzzer) but not
   others (AFL, HonggFuzz)
 - **Sanitizer configuration**: Proper setup of AddressSanitizer, UBSan, and
@@ -28,20 +28,17 @@ Setting up fuzzing infrastructure often involves:
 
 ## How fuzz-init Works
 
-fuzz-init generates projects using a **universal fuzzing architecture**:
+`fuzz-init` generates projects using a **universal fuzzing architecture**:
 
-1. **Standard interface**: Uses `LLVMFuzzerTestOneInput` which works with all
-   major fuzzers
-2. **Template system**: Embedded templates for C, C++, Rust, and more with
-   configurable build systems
+1. **Standard interface**: Standard `LLVMFuzzerTestOneInput` entrypoint
+   configured to work with all major fuzzers. 
+2. **Template system**: Embedded templates for C, C++, Rust, and the ability to
+   extend with remote templates. 
 3. **Conditional generation**: Templates adapt based on your choices (set
    default fuzzer, build system, minimal/full mode)
-4. **Build system integration**: Generates appropriate Makefiles,
-   CMakeLists.txt, or standalone scripts
-5. **Drop-in or tutorial-based**: Generate just fuzz templates, or a full
-   tutorial in your favorite language.
+4. **Drop-in or tutorial-based**: Generate just fuzz templates, or a full
+   tutorials to speed up onboarding. 
 
-This approach means you write your fuzzing logic once, and it works with AFL, libFuzzer, HonggFuzz, and other fuzzers without code changes.
 
 ## What You Get
 
@@ -49,50 +46,35 @@ This approach means you write your fuzzing logic once, and it works with AFL, li
 
 ```
 project/
-├── src/                    # Your application/library code
-├── include/               # Headers
-├── fuzz/                  # Fuzzing infrastructure
-│   ├── src/target.c      # Fuzzing harness (LLVMFuzzerTestOneInput)
+├── src/                  # Your application/library code
+├── include/              # Headers
+├── fuzz/                 # Fuzzing infrastructure
+│   ├── src/{a,b,c}.c     # Fuzzing harnesses (LLVMFuzzerTestOneInput)
 │   ├── driver/main.c     # Universal fuzzer driver
 │   ├── testsuite/        # Initial test corpus
 │   ├── dictionaries/     # Fuzzer dictionaries
-│   └── Makefile         # Build system integration
 ├── test/                 # Unit tests
-└── build/               # Build artifacts
+└── build/               # Build artifacts, including executable fuzzers.
 ```
-
-### Build System Support
-
-- **Makefile**: Traditional make-based builds with fuzzer targets
-- **CMake**: Modern CMake integration with proper target dependencies
-- **Standalone**: Self-contained scripts for simple projects
 
 ### Fuzzer Compatibility
 
-A new project includes rules for building:
+A new project includes rules for building as many fuzzers as possible so you
+don't have to guess which will be best. Our structure enables all fuzzers
+supported by the particular language, including: 
 
 - **libFuzzer**: Clang-based fuzzing with coverage feedback
 - **AFL/AFL++**: Industry-standard fuzzing with mutation strategies
 - **HonggFuzz**: Alternative fuzzing engine with different trade-offs
-- **Standalone**: Binary targets for manual fuzzing or integration
+- **Native**: Binary targets for manual fuzzing or integration
 
 **Example:** Using `cmake` with clang, you'd do:
 
 ```bash
-fuzz-init myapp --language C --integration cmake
+fuzz-init myapp --language cpp --integration cmake
 cd myapp
-cmake -S . -B build
-cmake --build build
+./fuzz.sh  # See how to build and run fuzzers configured for cmake.
 ```
-
-This will create three stand-alone binary programs:
-
-- `build/fuzz/myapp-afl`: An instrumented binary designed to work with AFL
-  built from `fuzz`
-- `build/fuzz/myapp-libfuzzer`: An instrumented libfuzzer binary built from `fuzz`
-- `build/fuzz/myapp-standalone`: An uninstrumented, stand-alone binary built
-  from `fuzz`
-- `build/myapp-app`: The overall app built from the top-level.
 
 ## Usage
 
@@ -102,18 +84,26 @@ This will create three stand-alone binary programs:
 # Interactive mode - prompts for options
 fuzz-init
 
-# Specify everything upfront, and set make fuzz target to libfuzzer instead of everything
-fuzz-init my-parser --language c --fuzzer libfuzzer --integration cmake
+# Specify language and integration up front
+fuzz-init my-parser --language cpp --integration cmake
 
-# Minimal mode for existing projects
-fuzz-init existing-app --language c --minimal --integration make
+# Don't include the tutorial and sample application
+fuzz-init existing-app --language cpp --integration make --minimal 
+
+# Run in dev-mode to test a template for a particular language
+fuzz-init  --language cpp --dev-mode --integration cmake  --dev-output ./scratch/
+
+
+# Same as above, but rebuild when the template changes.
+fuzz-init  --language cpp --dev-mode --integration cmake  --dev-output ./scratch/ --watch
+
 ```
 
 ### Adding to Existing Projects
 
 ```bash
 # Generate just the fuzz/ directory
-fuzz-init . --minimal --language c
+fuzz-init . --minimal --language cpp
 
 # Results in fuzz/ with everything needed to start fuzzing
 cd fuzz && make libfuzzer

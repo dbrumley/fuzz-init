@@ -10,7 +10,6 @@ project_name = { required = true, description = "Name of the fuzzing project" }
 target_name = { default = "target1", description = "Name of the fuzz target" }
 
 
-
 # Supported integration types
 [integrations]
 #supported = ["script", "make", "cmake"]
@@ -20,18 +19,16 @@ default = "make"
 [[integrations.options]]
 name = "make"
 description = "Makefile-based build system integration"
-files = []
+
 
 [[integrations.options]]
 name = "script"
 description = "Self-contained fuzzing setup with build.sh script"
-files = []
 
 
 [[integrations.options]]
 name = "cmake"
 description = "CMake-based build system integration"
-files = []
 
 
 # File conventions - smart defaults based on directory and extension

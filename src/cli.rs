@@ -242,61 +242,6 @@ pub async fn get_template_name(
     }
 }
 
-/*
-pub fn select_fuzzer_with_tracking(
-    args: &Args,
-    metadata: Option<&TemplateMetadata>,
-) -> anyhow::Result<(String, bool)> {
-    if let Some(fuzzer) = &args.fuzzer {
-        // Validate fuzzer type against template metadata if available
-        if let Some(metadata) = metadata {
-            if let Some(fuzzers) = &metadata.fuzzers {
-                if !fuzzers.supported.contains(fuzzer) {
-                    anyhow::bail!(
-                        "Fuzzer '{}' not supported by this template. Supported: {}",
-                        fuzzer,
-                        fuzzers.supported.join(", ")
-                    );
-                }
-            }
-        }
-        Ok((fuzzer.clone(), false)) // false = not prompted
-    } else {
-        // Get default from metadata or prompt user
-        if let Some(metadata) = metadata {
-            if let Some(fuzzers) = &metadata.fuzzers {
-                if fuzzers.supported.len() == 1 {
-                    // Only one option, use it (not considered prompted)
-                    Ok((fuzzers.supported[0].clone(), false))
-                } else {
-                    // Multiple options, prompt user
-                    let options: Vec<String> = fuzzers
-                        .options
-                        .iter()
-                        .map(|opt| format!("{} - {}", opt.display_name, opt.description))
-                        .collect();
-                    let selected = Select::new("Choose a fuzzer", options).prompt()?;
-                    let fuzzer_name = selected.split(" - ").next().unwrap();
-
-                    // Find the actual fuzzer name from display name
-                    for option in &fuzzers.options {
-                        if option.display_name == fuzzer_name {
-                            return Ok((option.name.clone(), true)); // true = prompted
-                        }
-                    }
-                    Ok((fuzzers.default.clone(), true)) // true = prompted
-                }
-            } else {
-                Ok(("libfuzzer".to_string(), false)) // Default fallback
-            }
-        } else {
-            Ok(("libfuzzer".to_string(), false)) // Default fallback
-        }
-    }
-}
-
-*/
-
 pub fn select_integration_with_tracking(
     args: &Args,
     metadata: Option<&TemplateMetadata>,
@@ -357,10 +302,6 @@ pub fn select_integration_with_tracking(
     }
 }
 
-pub fn determine_minimal_mode(args: &Args, _template_source: &TemplateSource) -> bool {
-    args.minimal
-}
-
 pub fn print_next_steps(
     project_name: &str,
     minimal_mode: bool,
@@ -380,11 +321,7 @@ pub fn print_next_steps(
     }
 
     // Generate CLI hint if any values were prompted
-    if prompted_values.project_name
-        || prompted_values.language
-        || prompted_values.fuzzer
-        || prompted_values.integration
-    {
+    if prompted_values.project_name || prompted_values.language || prompted_values.integration {
         println!();
         println!("💡 CLI Hint:");
         println!("============");

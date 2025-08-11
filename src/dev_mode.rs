@@ -358,6 +358,7 @@ async fn generate_test_project(
     Ok(())
 }
 
+// TODO: Replace this with calling a template-defined command/script.
 async fn build_test_project(
     project_dir: &Path,
     config: &TestConfiguration,

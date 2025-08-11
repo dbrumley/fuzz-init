@@ -54,15 +54,11 @@ async fn main() -> anyhow::Result<()> {
         load_template_metadata(&template_name)?
     };
 
-    // Get user selections
-    /* let (default_fuzzer, prompted_fuzzer) = select_fuzzer_with_tracking(&args, metadata.as_ref())?;
-    prompted_values.fuzzer = prompted_fuzzer; */
-
     let (integration_type, prompted_integration) =
         select_integration_with_tracking(&args, metadata.as_ref())?;
     prompted_values.integration = prompted_integration;
 
-    let minimal_mode = determine_minimal_mode(&args, &template_source);
+    let minimal_mode = args.minimal;
 
     // Setup Handlebars with helpers
     let handlebars = setup_handlebars();
@@ -74,7 +70,7 @@ async fn main() -> anyhow::Result<()> {
         .to_string_lossy()
         .to_string();
 
-    let mut data = json!({
+    let data = json!({
         "project_name": project_name,
         "target_name": project_basename, // Use base name only for template filenames
         "integration": integration_type,
@@ -83,14 +79,6 @@ async fn main() -> anyhow::Result<()> {
 
     // Generate project - handle nested paths properly
     let out_path = Path::new(&project_name);
-
-    // Enrich template data with project characteristics and analysis
-    data = enrich_template_data(
-        data,
-        out_path,
-        &template_name,
-        template_path.as_ref().map(|p| p.as_path()),
-    )?;
 
     // Create parent directories if they don't exist
     if let Some(parent) = out_path.parent() {

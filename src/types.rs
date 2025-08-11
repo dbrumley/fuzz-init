@@ -6,7 +6,6 @@ use std::collections::HashMap;
 pub struct PromptedValues {
     pub project_name: bool,
     pub language: bool,
-    pub fuzzer: bool,
     pub integration: bool,
 }
 
@@ -29,7 +28,6 @@ pub struct FuzzerConfig {
 pub struct IntegrationOption {
     pub name: String,
     pub description: String,
-    pub files: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
