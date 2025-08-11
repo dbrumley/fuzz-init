@@ -1,0 +1,123 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 19,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "displayName": "Base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "fuzz-native",
+      "displayName": "Fuzz (binary/native)",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/native",
+      "toolchainFile": "cmake/native.cmake"
+    },
+    {
+      "name": "fuzz-libfuzzer",
+      "displayName": "Fuzz (libFuzzer)",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/libfuzzer",
+      "toolchainFile": "cmake/libfuzzer.cmake"
+    },
+    {
+      "name": "fuzz-afl",
+      "displayName": "Fuzz (AFL++)",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/afl",
+      "toolchainFile": "cmake/afl.cmake"
+    },
+    {
+      "name": "fuzz-hongfuzz",
+      "displayName": "Fuzz (Hongfuzz)",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/hongfuzz",
+      "toolchainFile": "cmake/hongfuzz.cmake"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "fuzz-native",
+      "configurePreset": "fuzz-native"
+    },
+    {
+      "name": "fuzz-libfuzzer",
+      "configurePreset": "fuzz-libfuzzer"
+    },
+    {
+      "name": "fuzz-afl",
+      "configurePreset": "fuzz-afl",
+      "environment": {
+        "AFL_USE_ASAN": "1",
+        "AFL_USE_UBSAN": "1",
+        "AFL_LLVM_LAF_ALL": "1"
+      }
+    },
+    {
+      "name": "fuzz-hongfuzz",
+      "configurePreset": "fuzz-hongfuzz"
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "fuzz-build-native",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "fuzz-native"
+        },
+        {
+          "type": "build",
+          "name": "fuzz-native"
+        }
+      ]
+    },
+    {
+      "name": "fuzz-build-libfuzzer",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "fuzz-libfuzzer"
+        },
+        {
+          "type": "build",
+          "name": "fuzz-libfuzzer"
+        }
+      ]
+    },
+    {
+      "name": "fuzz-build-afl",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "fuzz-afl"
+        },
+        {
+          "type": "build",
+          "name": "fuzz-afl"
+        }
+      ]
+    },
+    {
+      "name": "fuzz-build-hongfuzz",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "fuzz-hongfuzz"
+        },
+        {
+          "type": "build",
+          "name": "fuzz-hongfuzz"
+        }
+      ]
+    }
+  ]
+}

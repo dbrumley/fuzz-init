@@ -376,16 +376,8 @@ pub fn print_next_steps(
         println!("2. Read TUTORIAL.md");
     } else {
         println!("1. cd {}/fuzz", project_name);
-        println!("2. Read INTEGRATION.md");
+        println!("2. Read README.md and INTEGRATION.md");
     }
-
-    println!();
-    println!("📚 Documentation:");
-    if !minimal_mode {
-        println!("   • TUTORIAL.md          - Complete fuzzing tutorial and examples");
-    }
-    println!("   - fuzz/INTEGRATION.md  - Integration guide for existing projects");
-    println!("   - fuzz/README.md       - Quick reference for fuzzing commands");
 
     // Generate CLI hint if any values were prompted
     if prompted_values.project_name
