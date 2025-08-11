@@ -1,263 +1,189 @@
-//===- afl_driver.cpp - a glue between AFL and libFuzzer --------*- C++ -* ===//
+// Single driver for AFL++/hongfuzz/native that invokes the universal harness:
+//   extern "C" int LLVMFuzzerTestOneInput(const uint8_t*, size_t);
+// Optional initializer:
+//   extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv);
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//===----------------------------------------------------------------------===//
-/* This file allows to fuzz libFuzzer-style target functions
- (LLVMFuzzerTestOneInput) with AFL using AFL's persistent (in-process) mode.
-Usage:
-################################################################################
-cat << EOF > test_fuzzer.cc
-#include <stddef.h>
-#include <stdint.h>
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  if (size > 0 && data[0] == 'H')
-    if (size > 1 && data[1] == 'I')
-       if (size > 2 && data[2] == '!')
-       __builtin_trap();
-  return 0;
-}
-EOF
-# Build your target with -fsanitize-coverage=trace-pc-guard using fresh clang.
-clang -g -fsanitize-coverage=trace-pc-guard test_fuzzer.cc -c
-# Build afl-llvm-rt.o.c from the AFL distribution.
-clang -c -w $AFL_HOME/llvm_mode/afl-llvm-rt.o.c
-# Build this file, link it with afl-llvm-rt.o.o and the target code.
-clang++ afl_driver.cpp test_fuzzer.o afl-llvm-rt.o.o
-# Run AFL:
-rm -rf IN OUT; mkdir IN OUT; echo z > IN/z;
-$AFL_HOME/afl-fuzz -i IN -o OUT ./a.out
-################################################################################
-AFL_DRIVER_STDERR_DUPLICATE_FILENAME: Setting this *appends* stderr to the file
-specified. If the file does not exist, it is created. This is useful for getting
-stack traces (when using ASAN for example) or original error messages on hard
-to reproduce bugs. Note that any content written to stderr will be written to
-this file instead of stderr's usual location.
-AFL_DRIVER_CLOSE_FD_MASK: Similar to libFuzzer's -close_fd_mask behavior option.
-If 1, close stdout at startup. If 2 close stderr; if 3 close both.
-*/
-#include <assert.h>
-#include <errno.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <cstdarg>
-#include <fstream>
-#include <iostream>
+// It mirrors the common afl_driver semantics while keeping sanitizer calls optional.
+
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
 #include <vector>
-// Platform detection. Copied from FuzzerInternal.h
-#ifdef __linux__
-#define LIBFUZZER_LINUX 1
-#define LIBFUZZER_APPLE 0
-#define LIBFUZZER_NETBSD 0
-#define LIBFUZZER_FREEBSD 0
-#define LIBFUZZER_OPENBSD 0
-#elif __APPLE__
-#define LIBFUZZER_LINUX 0
-#define LIBFUZZER_APPLE 1
-#define LIBFUZZER_NETBSD 0
-#define LIBFUZZER_FREEBSD 0
-#define LIBFUZZER_OPENBSD 0
-#elif __NetBSD__
-#define LIBFUZZER_LINUX 0
-#define LIBFUZZER_APPLE 0
-#define LIBFUZZER_NETBSD 1
-#define LIBFUZZER_FREEBSD 0
-#define LIBFUZZER_OPENBSD 0
-#elif __FreeBSD__
-#define LIBFUZZER_LINUX 0
-#define LIBFUZZER_APPLE 0
-#define LIBFUZZER_NETBSD 0
-#define LIBFUZZER_FREEBSD 1
-#define LIBFUZZER_OPENBSD 0
-#elif __OpenBSD__
-#define LIBFUZZER_LINUX 0
-#define LIBFUZZER_APPLE 0
-#define LIBFUZZER_NETBSD 0
-#define LIBFUZZER_FREEBSD 0
-#define LIBFUZZER_OPENBSD 1
+#include <string_view>
+#include <sys/stat.h>
+
+#if defined(_WIN32)
+  #include <io.h>
+  #define FUZZ_FILENO _fileno
+  #define FUZZ_DUP2   _dup2
+  #define FUZZ_OPEN   _open
+  #define FUZZ_O_CREAT _O_CREAT
+  #define FUZZ_O_TRUNC _O_TRUNC
+  #define FUZZ_O_WRONLY _O_WRONLY
+  #define FUZZ_S_IRUSR _S_IREAD
+  #define FUZZ_S_IWUSR _S_IWRITE
 #else
-#error "Support for your platform has not been implemented"
+  #include <unistd.h>
+  #include <dirent.h>
+  #include <fcntl.h>
+  #define FUZZ_FILENO fileno
+  #define FUZZ_DUP2   dup2
+  #define FUZZ_OPEN   open
+  #define FUZZ_O_CREAT O_CREAT
+  #define FUZZ_O_TRUNC O_TRUNC
+  #define FUZZ_O_WRONLY O_WRONLY
+  #define FUZZ_S_IRUSR 0400
+  #define FUZZ_S_IWUSR 0200
 #endif
-// libFuzzer interface is thin, so we don't include any libFuzzer headers.
-extern "C" {
-    int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size);
-    __attribute__((weak)) int LLVMFuzzerInitialize(int* argc, char*** argv);
-}
-// Notify AFL about persistent mode.
-static volatile char AFL_PERSISTENT[] = "##SIG_AFL_PERSISTENT##";
-// Notify AFL about deferred forkserver.
-static volatile char AFL_DEFER_FORKSVR[] = "##SIG_AFL_DEFER_FORKSRV##";
 
-// AFL functions - use weak symbols so they're optional
-extern "C" __attribute__((weak)) int __afl_persistent_loop(unsigned int);
-extern "C" __attribute__((weak)) void __afl_manual_init();
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size);
+extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv) __attribute__((weak));
 
-static volatile char suppress_warning1 = AFL_DEFER_FORKSVR[0];
-static volatile char suppress_warning2 = AFL_PERSISTENT[0];
-// Input buffer.
-static const size_t kMaxAflInputSize = 1 << 20;
-static uint8_t AflInputBuf[kMaxAflInputSize];
-// Use this optionally defined function to output sanitizer messages even if
-// user asks to close stderr.
-__attribute__((weak)) extern "C" void __sanitizer_set_report_fd(void*);
-// Keep track of where stderr content is being written to, so that
-// dup_and_close_stderr can use the correct one.
-static FILE* output_file = stderr;
-// Experimental feature to use afl_driver without AFL's deferred mode.
-// Needs to run before __afl_auto_init.
-__attribute__((constructor(0))) static void __decide_deferred_forkserver(void) {
-    if (getenv("AFL_DRIVER_DONT_DEFER")) {
-        if (unsetenv("__AFL_DEFER_FORKSRV")) {
-            perror("Failed to unset __AFL_DEFER_FORKSRV");
-            abort();
-        }
-    }
+// ---------- Detect sanitizers (for optional hooks) ----------
+#ifndef FUZZ_HAS_SANITIZER
+#  if defined(__has_feature)
+#    if __has_feature(address_sanitizer) || __has_feature(undefined_behavior_sanitizer) || __has_feature(thread_sanitizer)
+#      define FUZZ_HAS_SANITIZER 1
+#    endif
+#  endif
+#  if !defined(FUZZ_HAS_SANITIZER)
+#    if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_UNDEFINED__) || defined(__SANITIZE_THREAD__)
+#      define FUZZ_HAS_SANITIZER 1
+#    endif
+#  endif
+#endif
+
+#if FUZZ_HAS_SANITIZER
+#  include <sanitizer/common_interface_defs.h>
+// Keep sanitizer symbols optional so native link won’t fail.
+extern "C" void __sanitizer_set_report_fd(void*) __attribute__((weak));
+extern "C" void __sanitizer_set_report_path(const char*) __attribute__((weak));
+extern "C" void __sanitizer_set_death_callback(void (*)()) __attribute__((weak));
+#endif
+
+// -------------------- Utils --------------------
+static bool is_dir(const char* p) {
+#if defined(_WIN32)
+  struct _stat st; return _stat(p, &st) == 0 && (st.st_mode & _S_IFDIR);
+#else
+  struct stat st; return stat(p, &st) == 0 && S_ISDIR(st.st_mode);
+#endif
 }
-// If the user asks us to duplicate stderr, then do it.
-static void maybe_duplicate_stderr() {
-    char* stderr_duplicate_filename =
-        getenv("AFL_DRIVER_STDERR_DUPLICATE_FILENAME");
-    if (!stderr_duplicate_filename)
-        return;
-    FILE* stderr_duplicate_stream =
-        freopen(stderr_duplicate_filename, "a+", stderr);
-    if (!stderr_duplicate_stream) {
-        fprintf(
-            stderr,
-            "Failed to duplicate stderr to AFL_DRIVER_STDERR_DUPLICATE_FILENAME");
-        abort();
-    }
-    output_file = stderr_duplicate_stream;
+
+static bool is_file(const char* p) {
+#if defined(_WIN32)
+  struct _stat st; return _stat(p, &st) == 0 && (st.st_mode & _S_IFREG);
+#else
+  struct stat st; return stat(p, &st) == 0 && S_ISREG(st.st_mode);
+#endif
 }
-// Most of these I/O functions were inspired by/copied from libFuzzer's code.
-static void discard_output(int fd) {
-    FILE* temp = fopen("/dev/null", "w");
-    if (!temp)
-        abort();
-    dup2(fileno(temp), fd);
-    fclose(temp);
+
+static void list_files_in_dir(const char* dir, std::vector<std::string>& out) {
+#if defined(_WIN32)
+  // Minimal Windows handling omitted for brevity; native Linux is the common case.
+  (void)dir; (void)out;
+#else
+  DIR* d = opendir(dir);
+  if (!d) return;
+  while (auto* ent = readdir(d)) {
+    if (ent->d_name[0] == '.') continue;
+    std::string path = std::string(dir) + "/" + ent->d_name;
+    if (is_file(path.c_str())) out.push_back(path);
+  }
+  closedir(d);
+#endif
 }
-static void close_stdout() { discard_output(STDOUT_FILENO); }
-// Prevent the targeted code from writing to "stderr" but allow sanitizers and
-// this driver to do so.
-static void dup_and_close_stderr() {
-    int output_fileno = fileno(output_file);
-    int output_fd = dup(output_fileno);
-    if (output_fd <= 0)
-        abort();
-    FILE* new_output_file = fdopen(output_fd, "w");
-    if (!new_output_file)
-        abort();
-    if (!__sanitizer_set_report_fd)
-        return;
-    __sanitizer_set_report_fd(reinterpret_cast<void*>(output_fd));
-    discard_output(output_fileno);
+
+static bool read_all_stream(FILE* f, std::vector<uint8_t>& buf, size_t max_len) {
+  unsigned char tmp[4096]; size_t n;
+  while ((n = std::fread(tmp, 1, sizeof(tmp), f)) > 0) {
+    if (buf.size() + n > max_len) n = max_len - buf.size();
+    buf.insert(buf.end(), tmp, tmp + n);
+    if (buf.size() >= max_len) break;
+  }
+  return std::ferror(f) == 0;
 }
-static void Printf(const char* Fmt, ...) {
-    va_list ap;
-    va_start(ap, Fmt);
-    vfprintf(output_file, Fmt, ap);
-    va_end(ap);
-    fflush(output_file);
+
+static bool read_all_file(const char* path, std::vector<uint8_t>& buf, size_t max_len) {
+  FILE* f = std::fopen(path, "rb");
+  if (!f) return false;
+  bool ok = read_all_stream(f, buf, max_len);
+  std::fclose(f);
+  return ok;
 }
-// Close stdout and/or stderr if user asks for it.
-static void maybe_close_fd_mask() {
-    char* fd_mask_str = getenv("AFL_DRIVER_CLOSE_FD_MASK");
-    if (!fd_mask_str)
-        return;
-    int fd_mask = atoi(fd_mask_str);
-    if (fd_mask & 2)
-        dup_and_close_stderr();
-    if (fd_mask & 1)
-        close_stdout();
-}
-// Define LLVMFuzzerMutate to avoid link failures for targets that use it
-// with libFuzzer's LLVMFuzzerCustomMutator.
-extern "C" size_t LLVMFuzzerMutate(uint8_t* Data, size_t Size, size_t MaxSize) {
-    assert(false && "LLVMFuzzerMutate should not be called from afl_driver");
-    return 0;
-}
-// Execute any files provided as parameters.
-static int ExecuteFilesOnyByOne(int argc, char** argv) {
-    for (int i = 1; i < argc; i++) {
-        std::ifstream in(argv[i], std::ios::binary);
-        in.seekg(0, in.end);
-        size_t length = in.tellg();
-        in.seekg(0, in.beg);
-        std::cout << "Reading " << length << " bytes from " << argv[i] << std::endl;
-        // Allocate exactly length bytes so that we reliably catch buffer overflows.
-        std::vector<char> bytes(length);
-        in.read(bytes.data(), bytes.size());
-        assert(in);
-        LLVMFuzzerTestOneInput(reinterpret_cast<const uint8_t*>(bytes.data()),
-            bytes.size());
-        std::cout << "Execution successful" << std::endl;
-    }
-    return 0;
-}
+
+// Optional: ensure sanitizer reports get flushed
+#if FUZZ_HAS_SANITIZER
+static void on_sanitizer_death() { std::fflush(nullptr); }
+#endif
+
+// -------------------- Driver --------------------
 int main(int argc, char** argv) {
-    Printf(
-        "======================= INFO =========================\n"
-        "This binary is built for AFL-fuzz.\n"
-        "To run the target function on individual input(s) execute this:\n"
-        "  %s < INPUT_FILE\n"
-        "or\n"
-        "  %s INPUT_FILE1 [INPUT_FILE2 ... ]\n"
-        "To fuzz with afl-fuzz execute this:\n"
-        "  afl-fuzz [afl-flags] %s [-N]\n"
-        "afl-fuzz will run N iterations before "
-        "re-spawning the process (default: 1000)\n"
-        "======================================================\n",
-        argv[0], argv[0], argv[0]);
-    maybe_duplicate_stderr();
-    maybe_close_fd_mask();
-    if (LLVMFuzzerInitialize)
-        LLVMFuzzerInitialize(&argc, &argv);
-    // Do any other expensive one-time initialization here.
-    if (!getenv("AFL_DRIVER_DONT_DEFER") && __afl_manual_init)
-        __afl_manual_init();
-    int N = 1000;
-    if (argc == 2 && argv[1][0] == '-')
-        N = atoi(argv[1] + 1);
-    else if (argc == 2 && (N = atoi(argv[1])) > 0)
-        Printf("WARNING: using the deprecated call style `%s %d`\n", argv[0], N);
-    else if (argc > 1)
-        return ExecuteFilesOnyByOne(argc, argv);
-    assert(N > 0);
-    // Call LLVMFuzzerTestOneInput here so that coverage caused by initialization
-    // on the first execution of LLVMFuzzerTestOneInput is ignored.
-    uint8_t dummy_input[1] = { 0 };
-    LLVMFuzzerTestOneInput(dummy_input, 1);
-    int num_runs = 0;
-    
-    // If AFL functions are available, use persistent mode
-    if (__afl_persistent_loop) {
-        while (__afl_persistent_loop(N)) {
-            ssize_t n_read = read(0, AflInputBuf, kMaxAflInputSize);
-            if (n_read > 0) {
-                // Copy AflInputBuf into a separate buffer to let asan find buffer
-                // overflows. Don't use unique_ptr/etc to avoid extra dependencies.
-                uint8_t* copy = new uint8_t[n_read];
-                memcpy(copy, AflInputBuf, n_read);
-                num_runs++;
-                LLVMFuzzerTestOneInput(copy, n_read);
-                delete[] copy;
-            }
-        }
+  // Parse simple flags we support (like afl_driver):
+  //   -runs=N     limit number of testcase invocations
+  // Everything else is treated as a path (file or directory).
+  int runs = -1;
+  std::vector<std::string> paths;
+  for (int i = 1; i < argc; ++i) {
+    if (std::strncmp(argv[i], "-runs=", 6) == 0) {
+      runs = std::atoi(argv[i] + 6);
     } else {
-        // Fallback: read inputs one by one (non-persistent mode)
-        ssize_t n_read;
-        while ((n_read = read(0, AflInputBuf, kMaxAflInputSize)) > 0) {
-            uint8_t* copy = new uint8_t[n_read];
-            memcpy(copy, AflInputBuf, n_read);
-            num_runs++;
-            LLVMFuzzerTestOneInput(copy, n_read);
-            delete[] copy;
-        }
+      paths.emplace_back(argv[i]);
     }
-    Printf("%s: successfully executed %d input(s)\n", argv[0], num_runs);
+  }
+
+  // Environment knobs
+  size_t max_len = 1 << 20; // 1 MiB default
+  if (const char* ml = std::getenv("AFL_DRIVER_MAX_LEN")) {
+    long v = std::strtol(ml, nullptr, 10);
+    if (v > 0) max_len = static_cast<size_t>(v);
+  }
+
+#if FUZZ_HAS_SANITIZER
+  // Duplicate sanitizer reports to file if requested (compatible with afl_driver)
+  if (const char* dup = std::getenv("AFL_DRIVER_STDERR_DUPLICATE_FILENAME")) {
+    if (__sanitizer_set_report_path) __sanitizer_set_report_path(dup);
+  }
+  if (__sanitizer_set_death_callback) __sanitizer_set_death_callback(&on_sanitizer_death);
+  // Prefer fd routing if available
+  if (__sanitizer_set_report_fd) {
+    __sanitizer_set_report_fd(reinterpret_cast<void*>(FUZZ_FILENO(stderr)));
+  }
+#endif
+
+  // Allow user harness init
+  if (LLVMFuzzerInitialize) {
+    (void)LLVMFuzzerInitialize(&argc, &argv);
+  }
+
+  // Build list of inputs: files from args (expanding directories), or stdin if none.
+  std::vector<std::string> files;
+  for (const auto& p : paths) {
+    if (p == "@@" || p == "___FILE___") continue; // wrappers should substitute these
+    if (is_dir(p.c_str())) list_files_in_dir(p.c_str(), files);
+    else if (is_file(p.c_str())) files.push_back(p);
+  }
+
+  // No inputs? Read stdin once.
+  if (files.empty()) {
+    std::vector<uint8_t> data;
+    if (read_all_stream(stdin, data, max_len)) {
+      LLVMFuzzerTestOneInput(data.data(), data.size());
+    }
+    return 0;
+  }
+
+  int executed = 0;
+  for (const auto& f : files) {
+    if (runs >= 0 && executed >= runs) break;
+    std::vector<uint8_t> data;
+    if (!read_all_file(f.c_str(), data, max_len)) continue;
+    LLVMFuzzerTestOneInput(data.data(), data.size());
+    ++executed;
+  }
+
+  return 0;
 }

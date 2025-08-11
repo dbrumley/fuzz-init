@@ -45,8 +45,6 @@ full_mode_only = ["src", "include", "test", "test_data"]
 # File extensions that should be templated
 template_extensions = [".cpp", ".hpp", ".c", ".h", ".md", ".sh", ".txt"]
 
-# File extensions that should be executable
-executable_extensions = [".sh"]
 
 # File extensions that should not be templated
 no_template_extensions = [".dict", ".bin"]
@@ -69,10 +67,6 @@ condition = "integration == 'cmake'"
 path = "cmake/Fuzzing.cmake"
 condition = "integration == 'cmake'"
 
-
-[[files]]
-path = "fuzz/INTEGRATION.md"
-condition = "integration == 'make' || integration == 'cmake'"
 
 # Root-level build files (full mode only)
 [[files]]
@@ -98,13 +92,10 @@ template = true
 path = "TUTORIAL.md"
 condition = "minimal == false" 
 
-
-# Auto-configuration script for minimal mode 
 [[files]]
-path = "fuzz/configure.sh"
-condition = "minimal == true"
-executable = true
-template = true
+path = "fuzz.sh"
+condition = "minimal == false" 
+executable = true 
 
 # Directory creation rules
 [[directories]]

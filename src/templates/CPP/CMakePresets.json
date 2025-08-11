@@ -8,8 +8,10 @@
   "configurePresets": [
     {
       "name": "base",
+      "displayName": "Base",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
     {
@@ -44,14 +46,17 @@
   "buildPresets": [
     {
       "name": "fuzz-native",
+      "displayName": "Build (binary/native)",
       "configurePreset": "fuzz-native"
     },
     {
       "name": "fuzz-libfuzzer",
+      "displayName": "Build (libFuzzer)",
       "configurePreset": "fuzz-libfuzzer"
     },
     {
       "name": "fuzz-afl",
+      "displayName": "Build (AFL++)",
       "configurePreset": "fuzz-afl",
       "environment": {
         "AFL_USE_ASAN": "1",
@@ -61,7 +66,66 @@
     },
     {
       "name": "fuzz-hongfuzz",
+      "displayName": "Build (Hongfuzz)",
       "configurePreset": "fuzz-hongfuzz"
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "fuzz-build-native",
+      "displayName": "Workflow: build native",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "fuzz-native"
+        },
+        {
+          "type": "build",
+          "name": "fuzz-native"
+        }
+      ]
+    },
+    {
+      "name": "fuzz-build-libfuzzer",
+      "displayName": "Workflow: build libFuzzer",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "fuzz-libfuzzer"
+        },
+        {
+          "type": "build",
+          "name": "fuzz-libfuzzer"
+        }
+      ]
+    },
+    {
+      "name": "fuzz-build-afl",
+      "displayName": "Workflow: build AFL++",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "fuzz-afl"
+        },
+        {
+          "type": "build",
+          "name": "fuzz-afl"
+        }
+      ]
+    },
+    {
+      "name": "fuzz-build-hongfuzz",
+      "displayName": "Workflow: build Hongfuzz",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "fuzz-hongfuzz"
+        },
+        {
+          "type": "build",
+          "name": "fuzz-hongfuzz"
+        }
+      ]
     }
   ]
 }

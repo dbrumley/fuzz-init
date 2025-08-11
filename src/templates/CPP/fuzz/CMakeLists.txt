@@ -42,4 +42,6 @@ foreach(harness ${FUZZ_HARNESS_SRCS})
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
   )
 
+
 endforeach()
+
