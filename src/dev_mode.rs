@@ -184,14 +184,10 @@ async fn run_template_validation(args: &Args, session: &mut DevSession) -> Resul
                     format_config_name(config),
                     test_result.duration.as_secs_f32()
                 );
-                if !test_result.success
-                    && !test_result
-                        .error
-                        .as_ref()
-                        .unwrap_or(&String::new())
-                        .is_empty()
-                {
-                    println!("       Error: {}", test_result.error.as_ref().unwrap());
+                if !test_result.success {
+                    if let Some(error) = &test_result.error {
+                        println!("       Error: {}", error);
+                    }
                 }
             }
             Err(e) => {
@@ -303,7 +299,7 @@ async fn test_configuration(
     match generate_test_project(&project_dir, config, metadata).await {
         Ok(_) => {
             // Try to build the project
-            match build_test_project(&project_dir, config, &mut build_log).await {
+            match build_test_project(&project_dir, config, &mut build_log, metadata).await {
                 Ok(_) => {
                     success = true;
                     build_log.push_str("\n✅ Build successful");
@@ -358,12 +354,120 @@ async fn generate_test_project(
     Ok(())
 }
 
-// TODO: Replace this with calling a template-defined command/script.
+async fn run_validation_commands(
+    project_dir: &Path,
+    config: &TestConfiguration,
+    build_log: &mut String,
+    validation: &ValidationConfig,
+) -> Result<()> {
+    // Set up handlebars for variable interpolation
+    let handlebars = setup_handlebars();
+    
+    // Create context for variable interpolation
+    let context = json!({
+        "project_dir": project_dir.to_str().unwrap(),
+        "integration": config.integration,
+        "minimal": config.minimal,
+        "language": config.language,
+    });
+    
+    // Find and execute matching validation commands
+    let mut found_command = false;
+    
+    for command in &validation.commands {
+        // Check if this command's condition matches
+        if let Some(condition) = &command.condition {
+            // Convert condition to handlebars format
+            let handlebars_condition = convert_condition_to_handlebars(condition);
+            let condition_expr = format!("{{{{#if {}}}}}true{{{{else}}}}false{{{{/if}}}}", handlebars_condition);
+            let condition_result = handlebars.render_template(&condition_expr, &context)?;
+            
+            if condition_result.trim() != "true" {
+                continue;
+            }
+        }
+        
+        found_command = true;
+        build_log.push_str(&format!("\n🔧 Running validation: {}\n", command.name));
+        
+        // Determine working directory
+        let working_dir = if let Some(dir_template) = &command.dir {
+            let dir_path = handlebars.render_template(dir_template, &context)?;
+            PathBuf::from(dir_path)
+        } else {
+            project_dir.to_path_buf()
+        };
+        
+        // Execute each step
+        for (i, step) in command.steps.iter().enumerate() {
+            if step.is_empty() {
+                continue;
+            }
+            
+            let cmd_name = &step[0];
+            let cmd_args = &step[1..];
+            
+            build_log.push_str(&format!("  Step {}: {} {}\n", i + 1, cmd_name, cmd_args.join(" ")));
+            
+            let mut cmd = Command::new(cmd_name);
+            cmd.args(cmd_args).current_dir(&working_dir);
+            
+            // Add environment variables if specified
+            if let Some(env_vars) = &command.env {
+                for (key, value) in env_vars {
+                    cmd.env(key, value);
+                }
+            }
+            
+            let output = cmd.output()?;
+            
+            build_log.push_str(&format!(
+                "    stdout: {}\n",
+                String::from_utf8_lossy(&output.stdout)
+            ));
+            
+            if !output.stderr.is_empty() {
+                build_log.push_str(&format!(
+                    "    stderr: {}\n",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+            
+            if !output.status.success() && command.expect_success {
+                return Err(anyhow!(
+                    "Command '{}' failed with exit code: {:?}",
+                    step.join(" "),
+                    output.status.code()
+                ));
+            }
+        }
+    }
+    
+    if !found_command {
+        return Err(anyhow!(
+            "No validation command found for integration '{}' in {} mode",
+            config.integration,
+            if config.minimal { "minimal" } else { "full" }
+        ));
+    }
+    
+    Ok(())
+}
+
 async fn build_test_project(
     project_dir: &Path,
     config: &TestConfiguration,
     build_log: &mut String,
+    metadata: Option<&TemplateMetadata>,
 ) -> Result<()> {
+    // Try template-driven validation first
+    if let Some(meta) = metadata {
+        if let Some(validation) = &meta.validation {
+            return run_validation_commands(project_dir, config, build_log, validation).await;
+        }
+    }
+    
+    // Fallback to hardcoded logic for backward compatibility
     match config.integration.as_str() {
         "standalone" => build_standalone_project(project_dir, config, build_log).await,
         "make" => build_makefile_project(project_dir, config, build_log).await,

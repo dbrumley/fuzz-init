@@ -221,3 +221,45 @@ The generated build system automatically adapts to your environment:
 # Post-generation hooks (optional future feature)
 [hooks]
 # post_generate = ["chmod +x fuzz/build.sh"]
+
+# Validation commands for dev-mode testing
+[validation]
+
+# CMake with presets (full mode)
+[[validation.commands]]
+name = "build-cmake-preset-full"
+condition = "integration == 'cmake' && minimal == false"
+dir = "{{project_dir}}"
+steps = [
+    ["cmake", "--preset", "fuzz-libfuzzer"],
+    ["cmake", "--build", "--preset", "fuzz-libfuzzer"]
+]
+
+# CMake with presets (minimal mode)
+[[validation.commands]]
+name = "build-cmake-preset-minimal"
+condition = "integration == 'cmake' && minimal == true"
+dir = "{{project_dir}}/fuzz"
+steps = [
+    ["cmake", "--preset", "fuzz-libfuzzer"],
+    ["cmake", "--build", "--preset", "fuzz-libfuzzer"]
+]
+
+# Make (full mode)
+[[validation.commands]]
+name = "build-make-full"
+condition = "integration == 'make' && minimal == false"
+dir = "{{project_dir}}"
+steps = [
+    ["make"],
+    ["make", "fuzz"]
+]
+
+# Make (minimal mode)
+[[validation.commands]]
+name = "build-make-minimal"
+condition = "integration == 'make' && minimal == true"
+dir = "{{project_dir}}/fuzz"
+steps = [
+    ["make"]
+]

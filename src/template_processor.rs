@@ -3,7 +3,7 @@ use anyhow;
 use handlebars::Handlebars;
 use regex;
 use serde_json;
-use std::{fs, path::Path, process::Command};
+use std::{fs, path::Path};
 
 // Conditional template loading based on build mode
 #[cfg(not(debug_assertions))]
@@ -354,7 +354,7 @@ fn evaluate_condition(condition: &str, data: &serde_json::Value) -> bool {
     }
 }
 
-fn convert_condition_to_handlebars(condition: &str) -> String {
+pub fn convert_condition_to_handlebars(condition: &str) -> String {
     // Handle AND conditions first (higher precedence)
     if condition.contains("&&") {
         let parts: Vec<String> = condition

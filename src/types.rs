@@ -53,6 +53,8 @@ pub struct TemplateMetadata {
     pub integrations: Option<IntegrationConfig>,
     #[serde(default)]
     pub file_conventions: FileConventions,
+    #[serde(default)]
+    pub validation: Option<ValidationConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -117,4 +119,23 @@ fn default_true() -> bool {
 pub enum TemplateSource {
     Local(String),
     GitHubFull(String),
+}
+
+#[derive(Debug, Deserialize, Serialize, Default)]
+pub struct ValidationConfig {
+    pub commands: Vec<ValidationCommand>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ValidationCommand {
+    pub name: String,
+    #[serde(default)]
+    pub condition: Option<String>,
+    #[serde(default)]
+    pub dir: Option<String>,
+    pub steps: Vec<Vec<String>>,
+    #[serde(default)]
+    pub env: Option<HashMap<String, String>>,
+    #[serde(default = "default_true")]
+    pub expect_success: bool,
 }
