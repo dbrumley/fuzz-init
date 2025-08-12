@@ -115,10 +115,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Success message with next steps
-    println!(
-        "Project '{}' created with {} template!",
-        project_name, template_name
-    );
+    println!("Project '{project_name}' created with {template_name} template!");
 
     // Display post-generation message if it exists
     display_post_generation_message(out_path)?;
@@ -138,6 +135,7 @@ fn generate_cli_documentation() {
     let markdown = clap_markdown::help_markdown::<Args>();
 
     // Convert to MDX with Docusaurus enhancements
+    #[allow(clippy::uninlined_format_args)]
     let mdx_content = format!(
         r#"---
 title: "fuzz-init CLI Reference"
@@ -404,7 +402,7 @@ This will:
         markdown
     );
 
-    println!("{}", mdx_content);
+    println!("{mdx_content}");
 }
 
 /// Display post-generation message if it exists and then clean it up
@@ -415,7 +413,7 @@ fn display_post_generation_message(output_dir: &Path) -> anyhow::Result<()> {
         // Read and display the message
         let message_content = std::fs::read_to_string(&message_path)?;
 
-        println!("\n{}", message_content);
+        println!("\n{message_content}");
 
         // Clean up the message file after displaying it
         std::fs::remove_file(&message_path)?;

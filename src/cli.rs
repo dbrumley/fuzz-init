@@ -1,6 +1,5 @@
 use crate::github_fetcher::fetch_github_template;
 use crate::types::*;
-use anyhow;
 use clap::Parser;
 use inquire::{Select, Text};
 use std::path::PathBuf;
@@ -183,22 +182,18 @@ pub fn determine_template_source_with_tracking(
         }
         // Template specified - use remote template
         (None, Some(template)) => {
-            if template.starts_with("github:") {
+            if template.starts_with("github:") || template.starts_with('@') {
                 Ok((TemplateSource::GitHubFull(template.clone()), false))
-            } else if template.starts_with('@') {
-                Ok((TemplateSource::GitHubFull(template.clone()), false))
+            } else if let Some(actual_template_name) =
+                find_template_case_insensitive(template, available_templates)
+            {
+                Ok((TemplateSource::Local(actual_template_name), false))
             } else {
-                if let Some(actual_template_name) =
-                    find_template_case_insensitive(template, available_templates)
-                {
-                    Ok((TemplateSource::Local(actual_template_name), false))
-                } else {
-                    anyhow::bail!(
-                        "Invalid template '{}'. Available: {}",
-                        template,
-                        available_templates.join(", ")
-                    );
-                }
+                anyhow::bail!(
+                    "Invalid template '{}'. Available: {}",
+                    template,
+                    available_templates.join(", ")
+                );
             }
         }
         // Both specified - error
@@ -313,10 +308,10 @@ pub fn print_next_steps(
     println!("🚀 Next steps:");
     println!("==============");
     if !minimal_mode {
-        println!("1. cd {}", project_name);
+        println!("1. cd {project_name}");
         println!("2. Read TUTORIAL.md");
     } else {
-        println!("1. cd {}/fuzz", project_name);
+        println!("1. cd {project_name}/fuzz");
         println!("2. Read README.md and INTEGRATION.md");
     }
 
@@ -331,21 +326,21 @@ pub fn print_next_steps(
         let mut command = "fuzz-init".to_string();
 
         // Add project name
-        command.push_str(&format!(" {}", project_name));
+        command.push_str(&format!(" {project_name}"));
 
         // Add language if it was from template source
         if let TemplateSource::Local(language) = template_source {
-            command.push_str(&format!(" --language {}", language));
+            command.push_str(&format!(" --language {language}"));
         }
 
         // Add other parameters
-        command.push_str(&format!(" --integration {}", integration));
+        command.push_str(&format!(" --integration {integration}"));
 
         if minimal_mode {
             command.push_str(" --minimal");
         }
 
-        println!("  {}", command);
+        println!("  {command}");
         println!();
     }
 

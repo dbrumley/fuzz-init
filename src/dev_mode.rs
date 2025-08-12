@@ -91,7 +91,7 @@ pub async fn run_dev_mode(args: &Args) -> Result<()> {
             watch_path.clone()
         };
 
-        println!("\n👀 Watching {} for changes...", actual_watch_path);
+        println!("\n👀 Watching {actual_watch_path} for changes...");
         println!("Press Ctrl+C to exit");
 
         start_file_watcher(&actual_watch_path, args, session).await?;
@@ -187,12 +187,20 @@ async fn run_template_validation(args: &Args, session: &mut DevSession) -> Resul
                 );
                 if !test_result.success {
                     if let Some(error) = &test_result.error {
-                        println!("       Error: {}", error);
+                        println!("       Error: {error}");
+                    }
+                    // Display build log for failed tests to help debugging
+                    if !test_result.build_log.is_empty() {
+                        println!("\n       Build output:");
+                        for line in test_result.build_log.lines() {
+                            println!("       {line}");
+                        }
+                        println!();
                     }
                 }
             }
             Err(e) => {
-                println!("    ❌ Failed to run test: {}", e);
+                println!("    ❌ Failed to run test: {e}");
             }
         }
 
@@ -306,14 +314,14 @@ async fn test_configuration(
                     build_log.push_str("\n✅ Build successful");
                 }
                 Err(e) => {
-                    error_msg = Some(format!("Build failed: {}", e));
-                    build_log.push_str(&format!("\n❌ Build failed: {}", e));
+                    error_msg = Some(format!("Build failed: {e}"));
+                    build_log.push_str(&format!("\n❌ Build failed: {e}"));
                 }
             }
         }
         Err(e) => {
-            error_msg = Some(format!("Template generation failed: {}", e));
-            build_log.push_str(&format!("❌ Template generation failed: {}", e));
+            error_msg = Some(format!("Template generation failed: {e}"));
+            build_log.push_str(&format!("❌ Template generation failed: {e}"));
         }
     }
 
@@ -386,10 +394,8 @@ async fn run_validation_commands(
         if let Some(condition) = &command.condition {
             // Convert condition to handlebars format
             let handlebars_condition = convert_condition_to_handlebars(condition);
-            let condition_expr = format!(
-                "{{{{#if {}}}}}true{{{{else}}}}false{{{{/if}}}}",
-                handlebars_condition
-            );
+            let condition_expr =
+                format!("{{{{#if {handlebars_condition}}}}}true{{{{else}}}}false{{{{/if}}}}");
             let condition_result = handlebars.render_template(&condition_expr, &context)?;
 
             if condition_result.trim() != "true" {
@@ -478,9 +484,9 @@ async fn run_validation_commands(
                 let file_path = working_dir.join(&processed_pattern);
 
                 if file_path.exists() {
-                    build_log.push_str(&format!("    ✓ Found: {}\n", processed_pattern));
+                    build_log.push_str(&format!("    ✓ Found: {processed_pattern}\n"));
                 } else {
-                    build_log.push_str(&format!("    ✗ Missing: {}\n", processed_pattern));
+                    build_log.push_str(&format!("    ✗ Missing: {processed_pattern}\n"));
                     return Err(anyhow!(
                         "Required file '{}' was not created by the build",
                         processed_pattern
@@ -555,7 +561,7 @@ async fn start_file_watcher(watch_path: &str, args: &Args, mut session: DevSessi
 
                     // Re-run validation
                     if let Err(e) = run_template_validation(args, &mut session).await {
-                        println!("❌ Validation failed: {}", e);
+                        println!("❌ Validation failed: {e}");
                     }
 
                     println!("\n👀 Watching for changes... (Press Ctrl+C to exit)");
@@ -577,9 +583,9 @@ fn print_results_summary(results: &[TestResult]) {
     println!("\n═══════════════════════════════════════");
     println!("📊 Test Results Summary");
     println!("═══════════════════════════════════════");
-    println!("Total:      {}", total);
-    println!("✅ Success: {}", successful);
-    println!("❌ Failed:  {}", failed);
+    println!("Total:      {total}");
+    println!("✅ Success: {successful}");
+    println!("❌ Failed:  {failed}");
 
     if failed > 0 {
         println!("\n❌ Failed configurations:");
@@ -601,10 +607,10 @@ fn print_results_summary(results: &[TestResult]) {
         .sum::<f32>()
         / total as f32;
 
-    println!("\n⏱️  Average build time: {:.1}s", avg_duration);
+    println!("\n⏱️  Average build time: {avg_duration:.1}s");
 
     let success_rate = (successful as f32 / total as f32) * 100.0;
-    println!("📈 Success rate: {:.1}%", success_rate);
+    println!("📈 Success rate: {success_rate:.1}%");
 }
 
 fn print_final_report(session: &DevSession) {

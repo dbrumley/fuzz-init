@@ -1,8 +1,5 @@
 use crate::types::*;
-use anyhow;
 use handlebars::Handlebars;
-use regex;
-use serde_json;
 use std::{fs, path::Path};
 
 // Conditional template loading based on build mode
@@ -177,7 +174,7 @@ fn process_embedded_template_directory(
         let current_relative_path = if relative_path.is_empty() {
             file_name.to_string()
         } else {
-            format!("{}/{}", relative_path, file_name)
+            format!("{relative_path}/{file_name}")
         };
 
         // Skip template.toml configuration files - they should not be copied
@@ -294,14 +291,14 @@ impl FileConfig {
             FileConfig::Multiple { template, .. } => *template,
         }
     }
-    
+
     fn is_executable(&self) -> bool {
         match self {
             FileConfig::Single { executable, .. } => *executable,
             FileConfig::Multiple { executable, .. } => *executable,
         }
     }
-    
+
     fn condition(&self) -> Option<&String> {
         match self {
             FileConfig::Single { condition, .. } => condition.as_ref(),
@@ -373,7 +370,7 @@ fn evaluate_condition(condition: &str, data: &serde_json::Value) -> bool {
 
     // Convert condition to Handlebars template format
     let handlebars_condition = convert_condition_to_handlebars(condition);
-    let template = format!("{{{{#if {}}}}}true{{{{/if}}}}", handlebars_condition);
+    let template = format!("{{{{#if {handlebars_condition}}}}}true{{{{/if}}}}");
 
     match handlebars.render_template(&template, data) {
         Ok(result) => result.trim() == "true",
@@ -412,7 +409,7 @@ fn convert_single_condition_to_handlebars(condition: &str) -> String {
     {
         let var_name = captures.get(1).unwrap().as_str();
         let value = captures.get(2).unwrap().as_str();
-        return format!("(eq {} '{}')", var_name, value);
+        return format!("(eq {var_name} '{value}')");
     }
 
     // Handle boolean checks: "minimal == false" -> "(eq minimal false)"
@@ -422,7 +419,7 @@ fn convert_single_condition_to_handlebars(condition: &str) -> String {
     {
         let var_name = captures.get(1).unwrap().as_str();
         let bool_value = captures.get(2).unwrap().as_str();
-        return format!("(eq {} {})", var_name, bool_value);
+        return format!("(eq {var_name} {bool_value})");
     }
 
     // Unknown condition format, return something that evaluates to false
@@ -484,7 +481,7 @@ fn process_filesystem_directory_recursive(
         let current_relative_path = if relative_path.is_empty() {
             file_name.clone()
         } else {
-            format!("{}/{}", relative_path, file_name)
+            format!("{relative_path}/{file_name}")
         };
 
         if file_type.is_dir() {
@@ -533,7 +530,7 @@ fn process_filesystem_directory_recursive(
 
             // Check if this file should be templated
             let file_config = get_file_config(metadata, &current_relative_path);
-            let should_template = file_config.map_or(true, |fc| fc.should_template());
+            let should_template = file_config.is_none_or(|fc| fc.should_template());
 
             // Template the filename if needed
             let output_filename = if should_template {
@@ -545,7 +542,7 @@ fn process_filesystem_directory_recursive(
             let output_path = output_dir.join(&output_filename);
 
             // Process file content
-            let content = fs::read(&entry.path())?;
+            let content = fs::read(entry.path())?;
 
             // Try to process as UTF-8 text
             if let Ok(text_content) = String::from_utf8(content.clone()) {
@@ -565,7 +562,7 @@ fn process_filesystem_directory_recursive(
             }
 
             // Set executable permissions if needed
-            if file_config.map_or(false, |fc| fc.is_executable()) {
+            if file_config.is_some_and(|fc| fc.is_executable()) {
                 set_executable(&output_path)?;
             }
         }

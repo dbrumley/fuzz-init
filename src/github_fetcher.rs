@@ -1,22 +1,18 @@
 use crate::types::*;
-use anyhow;
-use reqwest;
 use std::{fs, path::Path};
 use tempfile::TempDir;
 
 pub async fn fetch_github_template(source: &TemplateSource) -> anyhow::Result<TempDir> {
     let (org, repo, path) = match source {
         TemplateSource::GitHubFull(spec) => {
-            if spec.starts_with("github:") {
-                let spec = &spec[7..]; // Remove "github:" prefix
+            if let Some(spec) = spec.strip_prefix("github:") {
                 let parts: Vec<&str> = spec.split('/').collect();
                 if parts.len() >= 2 {
                     (parts[0].to_string(), parts[1].to_string(), None::<String>)
                 } else {
                     anyhow::bail!("Invalid GitHub template format: {}", spec);
                 }
-            } else if spec.starts_with('@') {
-                let spec = &spec[1..]; // Remove "@" prefix
+            } else if let Some(spec) = spec.strip_prefix('@') {
                 let parts: Vec<&str> = spec.split('/').collect();
                 if parts.len() >= 2 {
                     (parts[0].to_string(), parts[1].to_string(), None::<String>)
@@ -33,16 +29,16 @@ pub async fn fetch_github_template(source: &TemplateSource) -> anyhow::Result<Te
     let temp_dir = TempDir::new()?;
 
     // Download the repository as a ZIP file
-    let url = format!("https://github.com/{}/{}/archive/main.zip", org, repo);
-    println!("Fetching template from {}", url);
+    let url = format!("https://github.com/{org}/{repo}/archive/main.zip");
+    println!("Fetching template from {url}");
 
     let client = reqwest::Client::new();
     let response = client.get(&url).send().await?;
 
     if !response.status().is_success() {
         // Try with 'master' branch instead of 'main'
-        let url = format!("https://github.com/{}/{}/archive/master.zip", org, repo);
-        println!("Retrying with master branch: {}", url);
+        let url = format!("https://github.com/{org}/{repo}/archive/master.zip");
+        println!("Retrying with master branch: {url}");
         let response = client.get(&url).send().await?;
 
         if !response.status().is_success() {
