@@ -1,36 +1,7 @@
-# Makefile for {{project_name}} with {{default_fuzzer}} fuzzing support
+# Makefile for {{project_name}} with fuzzing support
 
-{{#if (eq default_fuzzer "libfuzzer")}}
-# Compiler optimized for libFuzzer
-CC ?= clang
-FUZZ_CC = clang
-FUZZER_CFLAGS = -g -O1 -I$(INC_DIR) -fsanitize=address,fuzzer-no-link
-LIBRARY_SUFFIX = libfuzzer
-{{/if}}
-
-{{#if (eq default_fuzzer "afl")}}
-# Compiler optimized for AFL
+# Default compiler for normal builds
 CC ?= cc
-FUZZ_CC = afl-clang-fast
-FUZZER_CFLAGS = -g -O1 -I$(INC_DIR) -fsanitize=address
-LIBRARY_SUFFIX = afl
-{{/if}}
-
-{{#if (eq default_fuzzer "honggfuzz")}}
-# Compiler optimized for HonggFuzz
-CC ?= cc
-FUZZ_CC = hfuzz-clang
-FUZZER_CFLAGS = -g -O1 -I$(INC_DIR) -fsanitize=address
-LIBRARY_SUFFIX = honggfuzz
-{{/if}}
-
-{{#if (eq default_fuzzer "standalone")}}
-# Compiler optimized for standalone fuzzing
-CC ?= clang
-FUZZ_CC = clang
-FUZZER_CFLAGS = -g -O1 -I$(INC_DIR) -fsanitize=address
-LIBRARY_SUFFIX = fuzz
-{{/if}}
 
 AR ?= ar
 
@@ -94,11 +65,18 @@ test:
 	@echo "For testing guidance, see full mode template or fuzz/INTEGRATION.md"
 {{/unless}}
 
-fuzz: lib-$(LIBRARY_SUFFIX)
-	$(MAKE) -C fuzz LIBRARY_SUFFIX=$(LIBRARY_SUFFIX)
+fuzz:
+	@echo "🔨 Building all available fuzzing targets..."
+	@echo "This will build each fuzzer with its appropriate compiler and flags..."
+	@$(MAKE) fuzz-libfuzzer || true
+	@$(MAKE) fuzz-afl || true
+	@$(MAKE) fuzz-honggfuzz || true
+	@$(MAKE) fuzz-standalone || true
+	@echo "🎯 Fuzzing build complete! Check above for which fuzzers were built."
 
-fuzz-test: lib-$(LIBRARY_SUFFIX)
-	$(MAKE) -C fuzz test LIBRARY_SUFFIX=$(LIBRARY_SUFFIX)
+fuzz-test: $(LIBRARY)
+	@echo "Running fuzz tests..."
+	@$(MAKE) -C fuzz test
 
 fuzz-clean:
 	$(MAKE) -C fuzz clean
@@ -111,22 +89,22 @@ fuzz-help:
 lib: $(LIBRARY)
 lib-$(LIBRARY_SUFFIX): $(FUZZ_LIBRARY)
 
-# Fuzzer-specific targets
-fuzz-afl:
-	$(MAKE) LIBRARY_SUFFIX=afl FUZZ_CC=afl-clang-fast FUZZER_CFLAGS="-g -O1 -I$(INC_DIR) -fsanitize=address" lib-afl
-	$(MAKE) -C fuzz LIBRARY_SUFFIX=afl
-
+# Fuzzer-specific targets - build library with appropriate compiler/flags then only that fuzzer
 fuzz-libfuzzer:
 	$(MAKE) LIBRARY_SUFFIX=libfuzzer FUZZ_CC=clang FUZZER_CFLAGS="-g -O1 -I$(INC_DIR) -fsanitize=address,fuzzer-no-link" lib-libfuzzer
-	$(MAKE) -C fuzz LIBRARY_SUFFIX=libfuzzer
+	$(MAKE) -C fuzz libfuzzer LIBRARY_SUFFIX=libfuzzer
+
+fuzz-afl:
+	$(MAKE) LIBRARY_SUFFIX=afl FUZZ_CC=afl-clang-fast FUZZER_CFLAGS="-g -O1 -I$(INC_DIR) -fsanitize=address" lib-afl
+	$(MAKE) -C fuzz afl LIBRARY_SUFFIX=afl
 
 fuzz-honggfuzz:
 	$(MAKE) LIBRARY_SUFFIX=honggfuzz FUZZ_CC=hfuzz-clang FUZZER_CFLAGS="-g -O1 -I$(INC_DIR) -fsanitize=address" lib-honggfuzz
-	$(MAKE) -C fuzz LIBRARY_SUFFIX=honggfuzz
+	$(MAKE) -C fuzz honggfuzz LIBRARY_SUFFIX=honggfuzz
 
 fuzz-standalone:
-	$(MAKE) LIBRARY_SUFFIX=fuzz FUZZ_CC=clang FUZZER_CFLAGS="-g -O1 -I$(INC_DIR) -fsanitize=address" lib-fuzz
-	$(MAKE) -C fuzz LIBRARY_SUFFIX=fuzz
+	$(MAKE) LIBRARY_SUFFIX=fuzz FUZZ_CC=clang FUZZER_CFLAGS="-g -O1 -I$(INC_DIR)" lib-fuzz
+	$(MAKE) -C fuzz standalone LIBRARY_SUFFIX=fuzz
 
 {{#unless minimal}}
 clean: 
@@ -151,7 +129,7 @@ help:
 {{else}}
 	@echo "  test         - Show testing info (minimal mode)"
 {{/unless}}
-	@echo "  fuzz         - Build default fuzzer ({{default_fuzzer}})"
+	@echo "  fuzz         - Build all available fuzzers"
 	@echo "  fuzz-afl     - Build AFL fuzzer"
 	@echo "  fuzz-libfuzzer - Build libFuzzer"
 	@echo "  fuzz-honggfuzz - Build HonggFuzz fuzzer"

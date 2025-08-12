@@ -9,56 +9,18 @@ version = "1.0.0"
 project_name = { required = true, description = "Name of the fuzzing project" }
 target_name = { default = "target1", description = "Name of the fuzz target" }
 
-# Supported fuzzers for this template
-[fuzzers]
-supported = ["afl", "libfuzzer", "honggfuzz", "standalone"]
-default = "libfuzzer"
-
-[[fuzzers.options]]
-name = "afl"
-display_name = "AFL/AFL++"
-description = "Best for applications"
-requires = "requires AFL or AFL++"
-
-[[fuzzers.options]]
-name = "libfuzzer"
-display_name = "libFuzzer"
-description = "Best for libraries"
-requires = "requires clang with libFuzzer support"
-
-[[fuzzers.options]]
-name = "honggfuzz"
-display_name = "HonggFuzz"
-description = "Alternative to both AFL and libFuzzer"
-requires = "requires honggfuzz"
-
-[[fuzzers.options]]
-name = "standalone"
-display_name = "Standalone"
-description = "Binary with no fuzzing support built-in"
-requires = "no requirements"
-
 # Supported integration types
 [integrations]
-supported = ["standalone", "make", "cmake"]
-default = "make"
+supported = ["make", "cmake"]
+default = "cmake"
 
 [[integrations.options]]
 name = "make"
 description = "Makefile-based build system integration"
-files = ["fuzz/Makefile", "fuzz/INTEGRATION.md"]
-
-[[integrations.options]]
-name = "standalone"
-description = "Self-contained fuzzing setup with build script"
-files = ["fuzz/build.sh"]
-
-
 
 [[integrations.options]]
 name = "cmake"
 description = "CMake-based build system integration"
-files = ["fuzz/CMakeLists.txt", "fuzz/INTEGRATION.md"]
 
 # File conventions - smart defaults based on directory and extension
 [file_conventions]
@@ -69,124 +31,158 @@ always_include = ["fuzz"]
 full_mode_only = ["src", "include", "test", "test_data"]
 
 # File extensions that should be templated
-template_extensions = [".c", ".h", ".md", ".sh", ".toml", ".txt"]
-
-# File extensions that should be executable  
-executable_extensions = [".sh"]
+template_extensions = [".c", ".h", ".md", ".sh", ".txt"]
 
 # File extensions that should not be templated
 no_template_extensions = [".dict", ".bin"]
 
-# Integration-specific files
-[[files]]
-path = "fuzz/build.sh"
-condition = "integration == 'standalone'"
-executable = true
+# ===== FILE CONFIGURATIONS =====
 
+# Integration-specific fuzz files
 [[files]]
-path = "fuzz/Makefile"
 condition = "integration == 'make'"
+paths = ["fuzz/Makefile"]
 
 [[files]]
-path = "fuzz/CMakeLists.txt"
 condition = "integration == 'cmake'"
-
-[[files]]
-path = "fuzz/INTEGRATION.md"
-condition = "integration == 'make' || integration == 'cmake'"
+paths = [
+    "fuzz/CMakeLists.txt",
+    "fuzz/cmake/afl.cmake",
+    "fuzz/cmake/honggfuzz.cmake", 
+    "fuzz/cmake/libfuzzer.cmake",
+    "fuzz/cmake/standalone.cmake"
+]
 
 # Root-level build files (full mode only)
 [[files]]
-path = "Makefile"
 condition = "integration == 'make' && minimal == false"
+paths = ["Makefile"]
 
 [[files]]
-path = "CMakeLists.txt"
 condition = "integration == 'cmake' && minimal == false"
+paths = ["CMakeLists.txt", "CMakePresets.json"]
 
+# CMake presets for minimal mode
 [[files]]
-path = "build.sh"
-condition = "integration == 'standalone' && minimal == false"
+condition = "integration == 'cmake' && minimal == true"
+paths = ["fuzz/CMakePresets.json"]
+
+# Executable scripts (full mode only)
+[[files]]
+condition = "minimal == false"
+paths = ["fuzz.sh"]
 executable = true
-
-# Dictionary files - template filename but not content
-[[files]]
-path = "fuzz/dictionaries/{{target_name}}.dict"
 template = true
 
-# Root-level tutorial files (full mode only)
+# Tutorial and documentation (full mode only)
 [[files]]
-path = "TUTORIAL.md"
-condition = "minimal == false" 
+condition = "minimal == false"
+paths = ["TUTORIAL.md", "Dockerfile"]
 
-# Directory creation rules
+# Dictionary file - uses template for filename but not content
+[[files]]
+path = "fuzz/dictionaries/{{target_name}}.dict"
+template = true 
+
+# ===== DIRECTORY CONFIGURATIONS =====
+
 [[directories]]
 path = "fuzz/testsuite/{{target_name}}"
 create_empty = true  # Create empty directory for corpus files
 
+# ===== POST-GENERATION MESSAGE =====
 
+[post_generation_message]
+content = """
+🎯 {{project_name}} C Fuzzing Project Created!
 
-# Post-generation hooks (optional future feature)
-[hooks]
-# post_generate = ["chmod +x fuzz/build.sh"]
+{{#if minimal}}
+   Your fuzzing harness is ready in the fuzz directory. 
+{{else}}
+📁 Full mode: Complete project with example library and fuzzing setup.
+{{/if}}
 
-# Validation commands for dev-mode testing
+🚀 Quick Start:
+{{#if minimal}}
+1. cd {{project_name}}/fuzz
+2. Edit src/fuzz_harness_1.c to fuzz your actual code
+3. {{#if (eq integration 'make')}}make{{else if (eq integration 'cmake')}}cmake --preset fuzz-libfuzzer && cmake --build --preset fuzz-libfuzzer{{/if}}
+{{else}}
+1. cd {{project_name}}
+2. {{#if (eq integration 'make')}}make && make fuzz{{else if (eq integration 'cmake')}}cmake --preset fuzz-libfuzzer && cmake --build --preset fuzz-libfuzzer{{/if}}
+3. ./fuzz/build/fuzz_harness_1-libfuzzer fuzz/testsuite/
+{{/if}}
+
+📚 Documentation:
+- README.md - Quick reference
+{{#if minimal}}- INTEGRATION.md - How to integrate with your project{{else}}- TUTORIAL.md - Complete fuzzing tutorial{{/if}}
+
+Happy fuzzing! 🐛
+"""
+
+# ===== VALIDATION COMMANDS =====
+
 [validation]
 
-# CMake (full mode)
+# Full mode validation - CMake
 [[validation.commands]]
-name = "build-cmake-full"
+name = "cmake-full"
 condition = "integration == 'cmake' && minimal == false"
 dir = "{{project_dir}}"
 steps = [
-    ["cmake", "-B", "build"],
-    ["cmake", "--build", "build"],
-    ["cmake", "--build", "build", "--target", "fuzz"]
+    ["./fuzz.sh", "build"]
+]
+verify_files = [
+    "build/libfuzzer/bin/fuzz_harness_1-libfuzzer",
+    "build/afl/bin/fuzz_harness_1-afl",
+    "build/honggfuzz/bin/fuzz_harness_1-honggfuzz",
+    "build/standalone/bin/fuzz_harness_1-native"
 ]
 
-# CMake (minimal mode)
+# Full mode validation - Make
 [[validation.commands]]
-name = "build-cmake-minimal"
-condition = "integration == 'cmake' && minimal == true"
-dir = "{{project_dir}}/fuzz"
-steps = [
-    ["cmake", "-B", "build"],
-    ["cmake", "--build", "build"]
-]
-
-# Make (full mode)
-[[validation.commands]]
-name = "build-make-full"
+name = "make-full"
 condition = "integration == 'make' && minimal == false"
 dir = "{{project_dir}}"
 steps = [
-    ["make"],
-    ["make", "fuzz"]
+    ["./fuzz.sh", "build"]
+]
+# At least standalone should always be built
+verify_files = [
+    "fuzz/build/fuzz_harness_1-standalone"
 ]
 
-# Make (minimal mode)
+# Minimal mode validation - CMake
 [[validation.commands]]
-name = "build-make-minimal"
+name = "cmake-minimal"
+condition = "integration == 'cmake' && minimal == true"
+dir = "{{project_dir}}/fuzz"
+steps = [
+    ["cmake", "--preset", "fuzz-libfuzzer"],
+    ["cmake", "--build", "--preset", "fuzz-libfuzzer"],
+    ["cmake", "--preset", "fuzz-afl"],
+    ["cmake", "--build", "--preset", "fuzz-afl"],
+    ["cmake", "--preset", "fuzz-honggfuzz"],
+    ["cmake", "--build", "--preset", "fuzz-honggfuzz"],
+    ["cmake", "--preset", "fuzz-standalone"],
+    ["cmake", "--build", "--preset", "fuzz-standalone"]
+]
+verify_files = [
+    "build/libfuzzer/bin/fuzz_harness_1-libfuzzer",
+    "build/afl/bin/fuzz_harness_1-afl",
+    "build/honggfuzz/bin/fuzz_harness_1-honggfuzz",
+    "build/standalone/bin/fuzz_harness_1-native"
+]
+
+# Minimal mode validation - Make
+[[validation.commands]]
+name = "make-minimal"
 condition = "integration == 'make' && minimal == true"
 dir = "{{project_dir}}/fuzz"
 steps = [
     ["make"]
 ]
-
-# Standalone (full mode)
-[[validation.commands]]
-name = "build-standalone-full"
-condition = "integration == 'standalone' && minimal == false"
-dir = "{{project_dir}}"
-steps = [
-    ["bash", "build.sh"]
-]
-
-# Standalone (minimal mode)
-[[validation.commands]]
-name = "build-standalone-minimal"
-condition = "integration == 'standalone' && minimal == true"
-dir = "{{project_dir}}/fuzz"
-steps = [
-    ["bash", "build.sh"]
+# At least standalone should always be built
+verify_files = [
+    "build/fuzz_harness_1-standalone"
 ]

@@ -358,6 +358,8 @@ async fn generate_test_project(
 fn create_template_vars(config: &TestConfiguration, project_dir: &Path) -> serde_json::Value {
     json!({
         "project_dir": project_dir.to_str().unwrap(),
+        "project_name": project_dir.file_name().unwrap().to_str().unwrap(),
+        "target_name": project_dir.file_name().unwrap().to_str().unwrap(),
         "integration": config.integration,
         "minimal": config.minimal,
         "language": config.language,

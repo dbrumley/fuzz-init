@@ -1,7 +1,3 @@
-#if defined(__linux__) && defined(__GLIBC__)
-#define _GNU_SOURCE
-#endif
-
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -32,23 +28,6 @@ extern int HF_ITER(uint8_t**, size_t*);
 
 /* Main entry point - works with libFuzzer, AFL, HonggFuzz, or standalone */
 int main(int argc, char** argv) {
-
-
-#if defined(__linux__) && defined(__GLIBC__)
-    /*
-    Exception	Meaning
-      - FE_DIVBYZERO: Division by zero (e.g. 1.0 / 0.0)
-      - FE_INVALID: Invalid operation (e.g. sqrt(-1))
-      - FE_OVERFLOW: Result too large to be represented
-      - FE_UNDERFLOW: Result too small to be represented normally (common, usually harmless)
-      - FE_INEXACT	Rounding occurred during conversion (common, usually harmless)
-    */
-#include <fenv.h>
-    extern int feenableexcept(int);
-    feclearexcept(FE_ALL_EXCEPT);
-    feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
-#endif 
-
     /* Call user initialization if provided */
     if (LLVMFuzzerInitialize) {
         LLVMFuzzerInitialize(&argc, &argv);

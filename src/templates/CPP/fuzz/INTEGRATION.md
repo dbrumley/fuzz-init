@@ -175,6 +175,7 @@ cd fuzz
 
 **The library and fuzzer MUST use the same sanitizers**, otherwise you'll get linker errors or miss bugs:
 
+
 {{#if minimal}}
 - When building for libFuzzer/AFL/HonggFuzz: Use `-fsanitize=address,undefined`
 - When building for standalone: No sanitizers needed
