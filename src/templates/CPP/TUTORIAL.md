@@ -4,10 +4,16 @@ Welcome to {{project_name}}!
 
 ## Quick Start
 
-To build the application and all fuzzers:
-
 ```
+# Build fuzzers locally
 fuzz.sh build
+
+# Run a short test locally with fuzzers
+fuzz.sh test
+
+# Create a container with a fully reproducible fuzzing environment.
+docker build -t {{project_name}} .
+docker run -it # TBD
 ```
 
 
@@ -15,8 +21,8 @@ fuzz.sh build
 
 Fuzzing is an automated dynamic analysis technique that discovers software bugs
 by systematically generating inputs designed to explore new program behaviors.
-Rather than relying on purely random data, modern fuzzers like AFL, libFuzzer,
-and HonggFuzz use feedback mechanisms — such as code coverage, execution
+Rather than relying on purely random data, OSS modern fuzzers like AFL, libFuzzer,
+and Honggfuzz use feedback mechanisms — such as code coverage, mathexecution
 traces, or sanitizers — to guide input generation toward previously unexplored
 execution paths. These tools evolve inputs using strategies like mutation,
 minimization, and corpus management to maximize path discovery and uncover edge
@@ -40,19 +46,18 @@ Your fuzzing project has been set up with the following structure:
 ├── fuzz.sh                         # Build and test driver
 ├── build/                          # Location for build artifacts
 ├── fuzz/                           # All fuzzing-related files
-│   ├── src/{{target_name}}.c       # Fuzz harness that uses the library
+│   ├── src/fuzz_harness_1.c        # Fuzz harness that uses the library
 │   ├── driver/main.c               # Universal fuzzer driver
-│   ├── Makefile                    # Links against parent library
 │   ├── testsuite/                  # Initial test inputs
 │   ├── dictionaries/               # Fuzzing dictionaries
 │   ├── Dockerfile                  # Container for reproducible fuzzing
 │   ├── Mayhemfile                  # Mayhem.security configuration
 │   ├── INTEGRATION.md              # Guide for integrating with your projects
-│   └── README.md                   # Quick reference guide
 └── TUTORIAL.md                     # This comprehensive tutorial
 ```
 
-This example demonstrates the **ideal library-based approach** for fuzzing integration, where:
+This example demonstrates the **ideal library-based approach** for fuzzing
+integration, where: 
 
 - Your main code is built into a library (`lib{{project_name}}.a`)
 - The fuzz harness links against this library cleanly
@@ -63,29 +68,31 @@ This example demonstrates the **ideal library-based approach** for fuzzing integ
 Setting up fuzzing means creating a dynamic analysis environment where
 your application:
 
+- Compiling your code with sanitizers.
 - Reads in input from a file or stdin.
 - Calls functions you wish to test.
-- Is instrumented with sanitizers that trigger when a bug is detected.
 
 Setting up your application this way will always result in the best fuzzing
 performance, and detecting the most bugs.
 
-Often a single code base will result in multiple **fuzz targets** (aka a
-**harness**), which are stand-alone executables that exercise different
-functions.
+A single code base will include many functions that parse or process user
+input. For best performance, each entrypoint is factored into it's own 
+**fuzz harness** which invokes the function under test. This parallels normal
+component software testing, where each software component is tested
+individually. 
 
-It's recommended to also include any known tests to the fuzz target. The set of
-tests is called the **fuzz testsuite**, aka a **fuzz corpus**. The testsuite
-bootstraps fuzzing so it doesn't have to re-discover code paths you've already
-written tests for.
+It's recommended to also include any known tests as an initial **fuzz
+testsuite**, aka a **fuzz corpus**. The test suite  bootstraps fuzzing so it
+doesn't have to re-discover code paths you've already written tests for.
 
 **But what if you can't recompile? Or your application reads from tcp or udp
-sockets?** Then you must use a commercial solution like
-[Mayhem](https://app.mayhem.security).
+sockets?** Consider a commercial solution like
+[Mayhem](https://app.mayhem.security) which can run on native binaries that
+read from files, stdin, TCP, UDP, and UNIX sockets. 
 
 ## Step 1: Understanding the Fuzz Target
 
-Open `fuzz/src/{{target_name}}.c` and examine the fuzz target:
+Open `fuzz/src/fuzz_target_1.c` and examine the fuzz target:
 
 ```c
 #include <stdint.h>
@@ -103,7 +110,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         if (null_terminated) {
             memcpy(null_terminated, data, size);
             null_terminated[size] = '\\0';
-            process(null_terminated);
+            process(null_terminated); // Call function under test with fuzz data
             free(null_terminated);
         }
     }
@@ -155,7 +162,9 @@ This example is structured to exhibit best practices in testing and fuzzing:
   honggfuzz, and uninstrumented native builds. 
 
 
-**Key Insight**: The fuzzer doesn't need to know about your internal source structure - it just links against your library like any other application would.
+**Key Insight**: The fuzzer doesn't need to know about your internal source
+structure - it just links against your library like any other application
+would. 
 
 
 ## Common Issues and Solutions
