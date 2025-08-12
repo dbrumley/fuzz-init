@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.19)
 project({{project_name}}FuzzHarnesses LANGUAGES C)
 
+# Mark CMAKE_TOOLCHAIN_FILE as used to suppress warning when called via add_subdirectory
+if(CMAKE_TOOLCHAIN_FILE)
+  # Toolchain file already loaded by parent project
+endif()
+
 {{#if minimal}}
 # Assumes builds are from the 'fuzz' directory.
 set(FUZZ_SRC_DIR "${CMAKE_SOURCE_DIR}/src" CACHE PATH "")

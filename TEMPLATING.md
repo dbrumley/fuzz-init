@@ -13,6 +13,9 @@ Each language template lives in `src/templates/<LANGUAGE>/`. For example:
 - C++ templates: `src/templates/CPP/`
 - Rust templates: `src/templates/Rust/`
 
+Anything included under `src/templates` will be statically included in the
+built binary so that `fuzz-init` is self-contained.  
+
 ### Directory Layout
 
 A typical template directory structure:
@@ -22,24 +25,23 @@ src/templates/LANGUAGE/
 ├── template.toml           # Template metadata and configuration
 ├── fuzz/                   # Core fuzzing files (always included)
 │   ├── src/
-│   │   └── fuzz_harness_1.c/cpp/rs  # Main fuzzing harness
+│   │   └── fuzz_harness_1.cpp  # Main fuzzing harness
 │   ├── driver/
-│   │   └── main.c/cpp/rs   # Universal driver for non-libFuzzer
+│   │   └── main.c          # Driver for non-libfuzzer
 │   ├── Makefile            # Make integration
 │   ├── CMakeLists.txt      # CMake integration
 │   ├── cmake/              # CMake toolchain files
-│   │   ├── libfuzzer.cmake
+│   │   ├── libfuzzer.cmake 
 │   │   ├── afl.cmake
 │   │   ├── honggfuzz.cmake
 │   │   └── standalone.cmake
-│   ├── build.sh            # Standalone build script
 │   ├── README.md           # Fuzzing-specific documentation
 │   └── INTEGRATION.md      # Integration guide
 ├── src/                    # Example library code (full mode only)
-│   ├── lib.c/cpp/rs
-│   └── main.c/cpp/rs
+│   ├── mylib.c
+│   └── main.c
 ├── include/                # Header files (full mode only)
-│   └── lib.h/hpp
+│   └── mylib.h
 ├── test/                   # Unit tests (full mode only)
 │   └── test_lib.c/cpp/rs
 ├── Makefile                # Root Makefile (full mode only)

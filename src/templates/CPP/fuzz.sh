@@ -4,6 +4,13 @@ set -euo pipefail
 # Engines we support
 ENGINES=("libfuzzer" "afl" "hongfuzz" "standalone")
 
+# Base "fuzz" directory
+{{#if minimal}}
+FUZZ_DIR=""
+{{else}}
+FUZZ_DIR="fuzz/"
+{{/if}}
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -62,8 +69,8 @@ find_bins() {
 }
 
 ensure_seeds() {
-  mkdir -p fuzz/seeds
-  [[ -f fuzz/seeds/empty ]] || : > fuzz/seeds/empty
+  mkdir -p ${FUZZ_DIR}/testsuite
+  [[ -f ${FUZZ_DIR}/testsuite/empty ]] || : > ${FUZZ_DIR}/testsuite/empty
 }
 
 # -------- Build --------
@@ -95,10 +102,10 @@ test_libfuzzer() {
   while IFS= read -r bin; do
     [[ -z "$bin" ]] && continue
     local name; name="$(basename "$bin")"
-    local corpus="fuzz/corpus-$name"
+    local corpus="${FUZZ_DIR}/testsuite/$name"
     mkdir -p "$corpus"
     echo "+ [libfuzzer] $name for ${secs}s"
-    "$bin" -max_total_time="$secs" -print_final_stats=1 "$corpus" fuzz/seeds || true
+    "$bin" -max_total_time="$secs" -print_final_stats=1 "$corpus" ${FUZZ_DIR}/testsuite/ || true
   done < <(find_bins libfuzzer)
 }
 
@@ -109,7 +116,7 @@ test_afl() {
     return 0
   fi
   ensure_seeds
-  local out="fuzz/afl-out"
+  local out="${FUZZ_DIR}/afl-out"
   mkdir -p "$out"
   while IFS= read -r bin; do
     [[ -z "$bin" ]] && continue
@@ -117,7 +124,7 @@ test_afl() {
     local work="$out/$name"
     mkdir -p "$work"
     echo "+ [AFL++] $name for ${secs}s"
-    afl-fuzz -V "$secs" -i fuzz/seeds -o "$work" -- "$bin" @@ || true
+    afl-fuzz -V "$secs" -i ${FUZZ_DIR}/seeds -o "$work" -- "$bin" @@ || true
   done < <(find_bins afl)
 }
 
@@ -128,7 +135,7 @@ test_hongfuzz() {
     return 0
   fi
   ensure_seeds
-  local out="fuzz/hongfuzz-out"
+  local out="${FUZZ_DIR}/hongfuzz-out"
   mkdir -p "$out"
   while IFS= read -r bin; do
     [[ -z "$bin" ]] && continue
@@ -136,7 +143,7 @@ test_hongfuzz() {
     local work="$out/$name"
     mkdir -p "$work"
     echo "+ [hongfuzz] $name for ${secs}s"
-    hongfuzz -i fuzz/seeds -o "$work" -t "$secs" -- "$bin" ___FILE___ || true
+    hongfuzz -i ${FUZZ_DIR}/seeds -o "$work" -t "$secs" -- "$bin" ___FILE___ || true
   done < <(find_bins hongfuzz)
 }
 
@@ -147,7 +154,7 @@ test_standalone() {
     [[ -z "$bin" ]] && continue
     local name; name="$(basename "$bin")"
     echo "+ [standalone] smoke-test $name using seeds (timeout ${secs}s each)"
-    for s in fuzz/seeds/*; do
+    for s in ${FUZZ_DIR}/seeds/*; do
       timeout -k 1 "${secs}"s bash -c "cat \"$s\" | \"$bin\"" || true
     done
   done < <(find_bins standalone)

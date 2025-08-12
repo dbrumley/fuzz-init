@@ -1,56 +1,147 @@
 # Integrating {{project_name}} Fuzzing into Your Project
 
-This guide explains how to integrate this fuzzing harness into your existing
-C++ project.
+`fuzz-init` scaffolds fuzzing using a universal fuzzing design - write once,
+fuzz everywhere! The same `LLVMFuzzerTestOneInput()` function works with AFL,
+libFuzzer, HonggFuzz, and standalone testing.
+
+## Quickstart
+
+ - Verify everything works with  `fuzz.sh build && fuzz.sh test`
+ - **Important!:** Integrate this directory into your projects overall build.
+ - Modify `src/fuzz_harness_1.cpp` to fuzz your project code.
+ - Rebuild, fuzz, and find bugs!
+
+## Integration Overview
+
+There are four main steps to integrating this scaffolding into your project:
+
+1. **Integrate**: Add this directory (`fuzz`) so that it's built with your
+   entire project. 
+2. **Compilers & Instrumentation (Recommended)**: Set up a built target with
+   the appropriate instrumentation and sanitizer flags.
+3. **Harness**: Write fuzz harnesses that target application logic on your
+   apps attack surface.
+4. **Fuzz**: Perform spot fuzzing locally, or integrate into a commercial full
+   CICD pipeline solution like [Mayhem](https://mayhem.security).
 
 
-{{#if minimal}}
-## Drop-in Integration
+## Build Integration
 
-You've generated a drop-in fuzzing setup that expects to link against your
-existing project. You will need to ensure that your **entire project** is built
-with the appropriate sanitizers.  
+The `fuzz` directory should be integrated into your overall project so that
+your fuzz harnesses stay in sync with your source code. We have provided a
+skeleton for several build/integration systems and fuzzing engines. 
 
-### Prerequisites
+### Fuzzing Engines
 
-We've dropped in a setup that builds: 
-- **Clang/libfuzzer** with AddressSanitizer: `-fsanitize=address,undefined`
-- **AFL++ compiler**: `afl-clang-fast++`
-- **HonggFuzz compiler**: `hfuzz-clang++`
-- **Standard (native) compiler** for standalone fuzzing without clang or AFL++.
+The script `./fuzz.sh` shows how to build this repo for several different
+fuzzing engines.  We have standardized harnesses around
+`LLVMFuzzerTestOneInput` used by libfuzzer, and have included drivers for
+other fuzzers to use this as the harness entrypoint.  
 
-You can pick and choose which ones you want to use. Generally users pick AFL++
-for applications, and libfuzzer for libraries.  If you cannot add
-instrumentation, never fear -- just build a native, uninstrumented target and
-run in Mayhem. 
+ - Out-of-the-box this will build for all fuzzers installed on your system.
+ - You can do native builds, choose one fuzzing engine, or build for multiple
+   -- it's up to you.
+ - **Picking a fuzzing engine**:
+    - **AFL** is the best choice for applications. 
+        - AFL requires linking against a `main` function. We have provided a
+          universal AFL harness driver under `driver/main.cpp`
+        - Install with `apt-get install afl++`.
+        - Set your C++ compiler to `afl-clang-fast++` or `afl-clang-g++`. 
+        - You can separately enable sanitizers. 
+    - **libfuzzer** is the best choice for pure libraries. 
+        - libfuzzer does not need a driver and uses it's own `main` function.
+        - It uses the same process for each fuzzing iteration to improve
+          speed, but this also means memory leaks accumulate and can
+          cause an OOM (out-of-memory) error. 
+        - It requires clang. Install with `apt-get install clang`
+    - **honggfuzz** is an alternative to AFL++. See `Dockerfile` for an
+      example installation of **hongfuzz**. 
+    - [Mayhem](https://mayhem.security) is the most comprehensive, and allows
+      for native (uninstrumented) fuzzing. It also supports running AFL,
+      libfuzzer, and hongfuzz targets. Get a free trial at
+      [https://app.mayhem.security]. 
+    
 
-### Integration Steps
+{{#if (eq integration 'cmake')}}
+### CMake Integration
 
-1. **Place this fuzz directory in your project**:
+Start by adding this directory (`fuzz`) to your top-level `CMakeLists.txt`
+file: 
+```Makefile
+# Add to your CMakeLists.txt
+add_subdirectory(fuzz)
+```
+
+Then update the `fuzz/CMakeLists.txt` file to pass proper include and linker
+flags to your harnesses:
+```Makefile
+# Use any project-level headers
+target_include_directories(${FUZZ_EXE} PRIVATE ${CMAKE_SOURCE_DIR}/include)
+# Link against any project-level libraries. 
+target_link_libraries(${FUZZ_EXE} PRIVATE mylib)  
+```
+
+The `fuzz-init` scaffolding also sets up `cmake` presets.
+
    ```bash
-   cp -r fuzz/ /path/to/your/project/
+   $ cmake --list-presets
+      Available configure presets:
+
+      "base"            - Base
+      "fuzz-standalone" - Fuzz (standalone)
+      "fuzz-libfuzzer"  - Fuzz (libFuzzer)
+      "fuzz-afl"        - Fuzz (AFL++)
+      "fuzz-hongfuzz"   - Fuzz (Hongfuzz)   
+
+   # Build libfuzzer targets
+   cmake --preset fuzz-libfuzzer && cmake --build --preset fuzz-libfuzzer
+
+   # Similar for other targets
    ```
 
-2. **Update the harness** (`src/{{target_name}}.cpp`):
-   - Replace the demo code with calls to your actual functions
-   - Include your project headers
-   - Handle exceptions appropriately
 
-3. **Build your library with each fuzzer's compiler**:
-   
-   {{#if (eq integration 'cmake')}}
-   ```bash
-   # For libFuzzer
-   CC=clang CXX=clang++ cmake -B build-libfuzzer -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -g -O1"
-   cmake --build build-libfuzzer
-   
-   # For AFL++
-   CC=afl-clang-fast CXX=afl-clang-fast++ cmake -B build-afl -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -g -O1"
-   cmake --build build-afl
-   
-   # Similar for other fuzzers...
-   ```
-   {{else}}
+**Note:** Unfortunately addressing every possible build configuration is out
+of scope for this tool; please see the `cmake` documentation.  
+
+**Tips:**
+- **Important!** You need to compile your *entire* project with instrumentation
+   and sanitizers, not just this `fuzz` directory.
+- Common compiler settings can be found under the `cmake/` directory. 
+- `CMakePresets.json` gives example recipies for using the above `cmake`
+  directives.
+- AFL++ requires the entire project be compiled with `afl-{g,clang}++` compiler
+  (`apt-get install afl++`)
+- libfuzzer requires the `clang` compiler (`apt-get install clang`)
+- If you want a complete application example, run `fuzz-init` without the
+  `--minimal` setting to get a full project with tutorial.
+
+{{/if}}
+
+{{#if (eq integration 'make')}}
+
+### Makefile integration
+
+To integrate, start by adding this directory to your `Makefile` as a new target:
+```Makefile
+# Build fuzz targets (delegates to fuzz/Makefile)
+fuzz: $(LIBRARY)
+	@echo "🔨 Building fuzzing targets..."
+	@$(MAKE) -C fuzz all
+	@echo "🎯 Fuzzing build complete!"
+
+# Per-fuzzer targets that rebuild library with appropriate compiler/flags
+fuzz-libfuzzer:
+	@echo "🔨 Building library and fuzz targets for libFuzzer..."
+	@if [ "$(HAVE_CLANG)" = "yes" ]; then \
+	  $(MAKE) clean-lib && \
+	  $(MAKE) lib CXX=clang++ CXXFLAGS="-g -O1 -fsanitize=address,undefined -I$(INC_DIR) -std=c++17" && \
+	  $(MAKE) -C fuzz libfuzzer LIBPART=../$(LIBRARY) CXX_CLANG=clang++; \
+	else \
+	  echo "⏭️  libFuzzer requires clang++"; \
+	fi
+```
+
+We provide `fuzz.sh`, but you can also directly use `make`:
    ```bash
    # For libFuzzer
    make clean
@@ -62,114 +153,89 @@ run in Mayhem.
    
    # Similar for other fuzzers...
    ```
-   {{/if}}
 
-4. **Build the fuzz harnesses**:
-   {{#if (eq integration 'cmake')}}
-   ```bash
-   cd fuzz
-   cmake --preset fuzz-libfuzzer && cmake --build --preset fuzz-libfuzzer
-   cmake --preset fuzz-afl && cmake --build --preset fuzz-afl
-   # Or use: ./fuzz.sh build
-   ```
-   {{else}}
-   ```bash
-   cd fuzz
-   make  # Builds all fuzzers
-   # Or: ./fuzz.sh build
-   ```
-   {{/if}}
 
-{{else}}
-## Full Mode Integration
+**Note:** Unfortunately addressing every possible build configuration is out
+of scope for this tool; please see the `make` documentation.  
 
-You've generated a complete example project with fuzzing. To integrate into your existing project:
-
-### Option 1: Copy Just the Fuzz Directory
-
-1. **Copy the fuzz directory**:
-   ```bash
-   cp -r fuzz/ /path/to/your/project/
-   ```
-
-2. **Update the build configuration** to point to your library:
-   {{#if (eq integration 'cmake')}}
-   - Edit `fuzz/CMakeLists.txt`
-   - Change library linking from `mylib` to your actual library name
-   {{else}}
-   - Edit `fuzz/Makefile`
-   - Update `LIBPART` to point to your library
-   {{/if}}
-
-3. **Update the harness** as described below
-
-### Option 2: Study and Adapt
-
-Review the example implementation to understand:
-- How sanitizers are configured in the main `{{#if (eq integration 'cmake')}}CMakeLists.txt{{else}}Makefile{{/if}}`
-- How the library is built with fuzzing instrumentation
-- How multiple fuzzer engines are supported
+**Tips:**
+- **Important!** You need to compile your *entire* project with instrumentation
+   and sanitizers, not just this `fuzz` directory.
+- AFL++ requires the entire project be compiled with `afl-{g,clang}++` compiler
+  (`apt-get install afl++`)
+- libfuzzer requires the `clang` compiler (`apt-get install clang`)
+- If you want a complete application example, run `fuzz-init` without the
+  `--minimal` setting to get a full project with tutorial.
 
 {{/if}}
 
-## Updating the Fuzz Harness
+## Scaffolding File Structure
 
-Replace the demo code in `src/{{target_name}}.cpp` with your actual target:
-
-```cpp
-#include <cstdint>
-#include <cstddef>
-#include <cstring>
-
-// Include YOUR headers
-#include "your_project/parser.h"  // Example
-
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-    if (size == 0) return 0;
-    
-    // Example: Parse untrusted input
-    try {
-        YourProject::Parser parser;
-        parser.parse(data, size);
-    } catch (...) {
-        // Exceptions are expected for malformed input
-        return 0;
-    }
-    
-    return 0;
-}
-```
-
-## Running the Fuzzers
-
-### Quick Test
 ```bash
-# Test that your harness works
-echo "test" | ./fuzz/build/{{target_name}}-libfuzzer
-
-# Run for 60 seconds
-./fuzz/build/{{target_name}}-libfuzzer -max_total_time=60
+.
+├── CMakeLists.txt       # (cmake only) cmake build directives
+├── CMakePresets.json    # (cmake only) build prefixes; see cmake --list-presets 
+├── fuzz.sh              # helper utility to build and test fuzzers
+├── INTEGRATION.md       # this document
+├── Mayhemfile           # Template Mayhemfile
+├── build                # Build output
+│   ├── afl              # AFL compiled targets. Requires afl package
+│   ├── hongfuzz         # Hongfuzz compiled targets. Requires hongfuzz
+│   ├── libfuzzer        # libfuzzer compiled targets. Requires clang
+│   └── standalone       # uninstrumented targets. Native compilation.
+├── cmake                # (cmake only) cmake directives for each fuzzer
+│   ├── afl.cmake
+│   ├── hongfuzz.cmake
+│   ├── libfuzzer.cmake
+│   └── standalone.cmake
+├── dictionaries         # (Optional) fuzz dictionary location
+│   └── fuzz_harness_1.dict
+├── driver               
+│   └── main.cpp         # AFL/native main() driver for targets
+├── src                  # Standard location for all fuzz harnesses
+│   └── fuzz_harness_1.cpp # A single harness
+└── testsuite            # Standard location for fuzz testsuites (corpus)
+    └── fuzz_harness_1   # test suite for a single harness
+        ├── demo_crash.txt  # test file
+        └── safe.txt        # test file
 ```
 
-### Full Fuzzing Session
+## Universal Harness and Best Practices
+
+This project uses a universal harness design that works across all major
+fuzzers.  Each harness is placed under `src` and must implement
+`LLVMFuzzerTestOneInput` that calls your code to test.
+
+  - Place harnesses under `src`, using one file per harness.
+  - Place the starting test suite/corpus for the harness under
+    `testsuite/<harness name>`.  
+  - (Optional) Dictionaries can significanty improve anything dealing with
+    text. Place dictionaries under `dictionaries/<harness name>.dict`.
+  - Set up your main project to build most files into a library. This will
+    make testing -- not just fuzzing -- much easier to manage by simplifying
+    includes and linking. 
+
+
+
+## Testing your compiled fuzz targets
+
+Fuzz targets live under the `build` directory, and are organized by fuzzer.
+For example:
+
 ```bash
-cd fuzz
+# Test that your libfuzzer target harness works
+echo "test" | ./build/libfuzzer/bin/fuzz_harness_1-libfuzzer 
 
-# Using the unified script (recommended)
-./fuzz.sh test              # Quick 10-second test of all engines
-./fuzz.sh test libfuzzer 300  # 5-minute libFuzzer run
+# Run libfuzzer target harness for 60 seconds
+./build/libfuzzer/bin/fuzz_harness_1-libfuzzer -max_total_time=60
 
-# Or directly
-./build/{{target_name}}-libfuzzer corpus/ -max_total_time=3600
+# Run AFL for 10 seconds using the testsuite and putting results in 'out'
+mkdir out 
+afl-fuzz -i testsuite/fuzz_harness_1/ -o out -V 10 -- build/afl/bin/fuzz_harness_1-afl
 ```
 
-### Using Different Engines
-- **libFuzzer**: `./build/{{target_name}}-libfuzzer corpus/`
-- **AFL++**: `afl-fuzz -i seeds -o afl-out -- ./build/{{target_name}}-afl @@`
-- **HonggFuzz**: `hongfuzz -i seeds -o hfuzz-out -- ./build/{{target_name}}-hongfuzz ___FILE___`
-- **Standalone**: `./build/{{target_name}}-standalone < testcase.txt`
 
-## Critical Requirements
+## Best Practices
 
 ### 1. Consistent Sanitizer Usage
 
@@ -179,7 +245,7 @@ cd fuzz
 {{#if minimal}}
 - When building for libFuzzer/AFL/HonggFuzz: Use `-fsanitize=address,undefined`
 - When building for standalone: No sanitizers needed
-- Each fuzzer requires rebuilding your library with its specific compiler
+- Each fuzzer requires rebuilding your application with its specific compiler
 {{else}}
 - The example shows how each fuzzer gets its own library build
 - Study the root `{{#if (eq integration 'cmake')}}CMakeLists.txt{{else}}Makefile{{/if}}` for the pattern
@@ -208,7 +274,16 @@ set(FUZZ_HARNESS_SRCS
 The Makefile will automatically detect new `.cpp` files in `src/`.
 {{/if}}
 
-### 3. Seed Corpus
+### 3. Focus on functions that accept untrusted user input
+
+Vulnerabilities typically occur when an applicaton first parses user input, so
+those should be the highest priority to fuzz. Typically a pentester will look
+for:
+  - Functions with `parse` in their name.
+  - Functions that accept `char *`
+  - Functions that read from a socket or file.
+
+### 4. Seed Test Suite (aka Corpus)
 
 Replace the demo files in `testsuite/{{target_name}}/` with real examples:
 ```bash
@@ -263,7 +338,4 @@ Update `dictionaries/{{target_name}}.dict` with protocol-specific tokens:
 4. ✅ Create additional harnesses for other entry points
 5. ✅ Integrate into CI/CD for regression testing
 
-For more details, see:
-- `README.md` - Quick reference and commands
-- `fuzz.sh` - Unified build/test script
-- Example harness in `src/{{target_name}}.cpp`
+🚀 Happy Fuzzing!
