@@ -1,0 +1,111 @@
+name: Full Test Suite
+
+on:
+  workflow_dispatch:  # Manual trigger
+  schedule:
+    - cron: '0 2 * * 0'  # Weekly on Sunday at 2 AM
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test-all-templates:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # C template tests
+          - language: C
+            integration: cmake
+            mode: full
+          - language: C
+            integration: cmake
+            mode: minimal
+          - language: C
+            integration: make
+            mode: full
+          - language: C
+            integration: make
+            mode: minimal
+          # CPP template tests
+          - language: CPP
+            integration: cmake
+            mode: full
+          - language: CPP
+            integration: cmake
+            mode: minimal
+          - language: CPP
+            integration: make
+            mode: full
+          - language: CPP
+            integration: make
+            mode: minimal
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake clang
+          # Install AFL++ for comprehensive testing
+          git clone https://github.com/AFLplusplus/AFLplusplus.git
+          cd AFLplusplus
+          make source-only
+          sudo make install
+          cd ..
+          # Install HonggFuzz
+          git clone https://github.com/google/honggfuzz.git
+          cd honggfuzz
+          make
+          sudo install honggfuzz /usr/local/bin/
+          sudo install hfuzz_cc/hfuzz-clang /usr/local/bin/
+          cd ..
+      
+      - name: Build fuzz-init
+        run: cargo build --release
+      
+      - name: Test ${{ matrix.language }} ${{ matrix.integration }} ${{ matrix.mode }}
+        run: |
+          MODE_FLAG=""
+          if [ "${{ matrix.mode }}" = "minimal" ]; then
+            MODE_FLAG="--minimal"
+          fi
+          
+          echo "=== Testing ${{ matrix.language }} ${{ matrix.integration }} ${{ matrix.mode }} ==="
+          ./target/release/fuzz-init test-${{ matrix.language }}-${{ matrix.integration }}-${{ matrix.mode }} \
+            --language ${{ matrix.language }} \
+            --integration ${{ matrix.integration }} \
+            $MODE_FLAG
+          
+          cd test-${{ matrix.language }}-${{ matrix.integration }}-${{ matrix.mode }}
+          
+          # Run appropriate build command
+          if [ "${{ matrix.mode }}" = "full" ]; then
+            if [ -f "./fuzz.sh" ]; then
+              ./fuzz.sh build
+            elif [ "${{ matrix.integration }}" = "cmake" ]; then
+              cmake --preset fuzz-libfuzzer && cmake --build --preset fuzz-libfuzzer
+            elif [ "${{ matrix.integration }}" = "make" ]; then
+              make && make -C fuzz
+            fi
+          else
+            # Minimal mode - build in fuzz directory
+            cd fuzz
+            if [ "${{ matrix.integration }}" = "cmake" ]; then
+              cmake --preset fuzz-libfuzzer && cmake --build --preset fuzz-libfuzzer
+            elif [ "${{ matrix.integration }}" = "make" ]; then
+              make
+            fi
+          fi
+          
+          # Verify binaries exist
+          echo "=== Checking for generated binaries ==="
+          find . -name "*fuzz_harness_1*" -type f -executable | grep -v ".o$"
+      
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-${{ matrix.language }}-${{ matrix.integration }}-${{ matrix.mode }}
+          path: test-${{ matrix.language }}-${{ matrix.integration }}-${{ matrix.mode }}/

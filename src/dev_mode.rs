@@ -374,29 +374,32 @@ async fn run_validation_commands(
 ) -> Result<()> {
     // Set up handlebars for variable interpolation
     let handlebars = setup_handlebars();
-    
+
     // Create context for variable interpolation
     let context = create_template_vars(config, project_dir);
-    
+
     // Find and execute matching validation commands
     let mut found_command = false;
-    
+
     for command in &validation.commands {
         // Check if this command's condition matches
         if let Some(condition) = &command.condition {
             // Convert condition to handlebars format
             let handlebars_condition = convert_condition_to_handlebars(condition);
-            let condition_expr = format!("{{{{#if {}}}}}true{{{{else}}}}false{{{{/if}}}}", handlebars_condition);
+            let condition_expr = format!(
+                "{{{{#if {}}}}}true{{{{else}}}}false{{{{/if}}}}",
+                handlebars_condition
+            );
             let condition_result = handlebars.render_template(&condition_expr, &context)?;
-            
+
             if condition_result.trim() != "true" {
                 continue;
             }
         }
-        
+
         found_command = true;
         build_log.push_str(&format!("\n🔧 Running validation: {}\n", command.name));
-        
+
         // Determine working directory
         let working_dir = if let Some(dir_template) = &command.dir {
             let dir_path = handlebars.render_template(dir_template, &context)?;
@@ -404,42 +407,47 @@ async fn run_validation_commands(
         } else {
             project_dir.to_path_buf()
         };
-        
+
         // Execute each step
         for (i, step) in command.steps.iter().enumerate() {
             if step.is_empty() {
                 continue;
             }
-            
+
             let cmd_name = &step[0];
             let cmd_args = &step[1..];
-            
-            build_log.push_str(&format!("  Step {}: {} {}\n", i + 1, cmd_name, cmd_args.join(" ")));
-            
+
+            build_log.push_str(&format!(
+                "  Step {}: {} {}\n",
+                i + 1,
+                cmd_name,
+                cmd_args.join(" ")
+            ));
+
             let mut cmd = Command::new(cmd_name);
             cmd.args(cmd_args).current_dir(&working_dir);
-            
+
             // Add environment variables if specified
             if let Some(env_vars) = &command.env {
                 for (key, value) in env_vars {
                     cmd.env(key, value);
                 }
             }
-            
+
             let output = cmd.output()?;
-            
+
             build_log.push_str(&format!(
                 "    stdout: {}\n",
                 String::from_utf8_lossy(&output.stdout)
             ));
-            
+
             if !output.stderr.is_empty() {
                 build_log.push_str(&format!(
                     "    stderr: {}\n",
                     String::from_utf8_lossy(&output.stderr)
                 ));
             }
-            
+
             if !output.status.success() && command.expect_success {
                 return Err(anyhow!(
                     "Command '{}' failed with exit code: {:?}",
@@ -448,21 +456,27 @@ async fn run_validation_commands(
                 ));
             }
         }
-        
+
         // Verify files if specified
         if let Some(verify_files) = &command.verify_files {
-            build_log.push_str(&format!("\n  Verifying files for command '{}':\n", command.name));
-            
+            build_log.push_str(&format!(
+                "\n  Verifying files for command '{}':\n",
+                command.name
+            ));
+
             // Process templates in file paths
             let template_vars = create_template_vars(config, project_dir);
             let handlebars = Handlebars::new();
-            
+
             for file_pattern in verify_files {
-                let processed_pattern = handlebars.render_template(file_pattern, &template_vars)
-                    .map_err(|e| anyhow!("Failed to process file pattern '{}': {}", file_pattern, e))?;
-                
+                let processed_pattern = handlebars
+                    .render_template(file_pattern, &template_vars)
+                    .map_err(|e| {
+                        anyhow!("Failed to process file pattern '{}': {}", file_pattern, e)
+                    })?;
+
                 let file_path = working_dir.join(&processed_pattern);
-                
+
                 if file_path.exists() {
                     build_log.push_str(&format!("    ✓ Found: {}\n", processed_pattern));
                 } else {
@@ -475,7 +489,7 @@ async fn run_validation_commands(
             }
         }
     }
-    
+
     if !found_command {
         return Err(anyhow!(
             "No validation command found for integration '{}' in {} mode",
@@ -483,7 +497,7 @@ async fn run_validation_commands(
             if config.minimal { "minimal" } else { "full" }
         ));
     }
-    
+
     Ok(())
 }
 
@@ -499,7 +513,7 @@ async fn build_test_project(
             return run_validation_commands(project_dir, config, build_log, validation).await;
         }
     }
-    
+
     Err(anyhow!(
         "Template '{}' does not define validation commands for integration '{}'. \
         Please add a [validation] section to the template.toml file.",
@@ -507,7 +521,6 @@ async fn build_test_project(
         config.integration
     ))
 }
-
 
 async fn start_file_watcher(watch_path: &str, args: &Args, mut session: DevSession) -> Result<()> {
     let (tx, rx) = channel();

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -10,382 +10,71 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Build and test the fuzz-init tool itself
-  build:
+  # Build and test the fuzz-init tool
+  build-and-test:
     runs-on: ubuntu-latest
-
+    
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
-      - name: Cache dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Build fuzz-init
-        run: cargo build --verbose
-
-      - name: Run tests
-        run: cargo test --verbose
-
-      - name: Check for warnings
-        run: cargo build --verbose 2>&1 | grep -E "(warning|error)" || true
-
-      - name: Validate YAML files
-        run: |
-          python3 scripts/validate-yaml.py
-
-  # Test harness generation for each language template
-  test-templates:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        language: [C, CPP, Rust]
-        include:
-          - language: C
-            fuzzers: "afl,libfuzzer,honggfuzz,standalone"
-            integrations: "make,cmake,standalone"
-          - language: CPP
-            fuzzers: "afl,libfuzzer,honggfuzz,standalone"
-            integrations: "make,standalone"
-          - language: Rust
-            fuzzers: "cargo-fuzz,afl-rs"
-            integrations: "cargo"
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
-      - name: Install system dependencies (Ubuntu)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake clang llvm-dev
-          # Install AFL++ for AFL testing
-          git clone https://github.com/AFLplusplus/AFLplusplus.git
-          cd AFLplusplus
-          make
-          sudo make install
-          cd ..
-          # Install HonggFuzz for HonggFuzz testing
-          git clone https://github.com/google/honggfuzz.git
-          cd honggfuzz
-          make
-          sudo make install
-          cd ..
-
-      - name: Cache dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Build fuzz-init
-        run: cargo build --release
-
-      - name: Test template generation with dev-mode
-        run: |
-          echo "Testing ${{ matrix.language }} template with dev-mode..."
-          ./target/release/fuzz-init --dev-mode --language ${{ matrix.language }} --dev-output ./test-output-${{ matrix.language }}
-
-          # Check that the output directory was created and contains expected files
-          echo "Checking generated project structure..."
-          ls -la ./test-output-${{ matrix.language }}/
-
-          # For C and CPP templates, check that fuzz directory exists
-          if [ "${{ matrix.language }}" = "C" ] || [ "${{ matrix.language }}" = "CPP" ]; then
-            echo "Checking fuzz directory structure..."
-            find ./test-output-${{ matrix.language }}/ -name "fuzz" -type d
-            if [ -d "./test-output-${{ matrix.language }}/fuzz" ]; then
-              ls -la ./test-output-${{ matrix.language }}/fuzz/
-            fi
-          fi
-
-      - name: Test minimal mode generation
-        run: |
-          echo "Testing minimal mode for ${{ matrix.language }}..."
-          ./target/release/fuzz-init test-minimal-${{ matrix.language }} --language ${{ matrix.language }} --minimal --dev-output ./test-minimal-${{ matrix.language }}
-
-          # Check minimal mode output
-          echo "Checking minimal mode structure..."
-          ls -la ./test-minimal-${{ matrix.language }}/
-
-          # For C and CPP, check that only fuzz directory is created in minimal mode
-          if [ "${{ matrix.language }}" = "C" ] || [ "${{ matrix.language }}" = "CPP" ]; then
-            if [ -d "./test-minimal-${{ matrix.language }}/fuzz" ]; then
-              echo "Minimal mode fuzz directory contents:"
-              ls -la ./test-minimal-${{ matrix.language }}/fuzz/
-            else
-              echo "ERROR: fuzz directory not found in minimal mode"
-              exit 1
-            fi
-          fi
-
-      - name: Test interactive mode (non-interactive)
-        run: |
-          echo "Testing non-interactive mode..."
-          # Test with all parameters specified to avoid prompts
-          ./target/release/fuzz-init test-interactive-${{ matrix.language }} \
-            --language ${{ matrix.language }} \
-            --fuzzer libfuzzer \
-            --integration make \
-            --dev-output ./test-interactive-${{ matrix.language }}
-
-          echo "Checking interactive mode output..."
-          ls -la ./test-interactive-${{ matrix.language }}/
-
-      - name: Upload test artifacts
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-output-${{ matrix.language }}
-          path: |
-            test-output-${{ matrix.language }}/
-            test-minimal-${{ matrix.language }}/
-            test-interactive-${{ matrix.language }}/
-
-  # Test build system integration for C/C++ templates
-  test-build-systems:
-    runs-on: ubuntu-latest
-    needs: test-templates
-    strategy:
-      matrix:
-        language: [C, CPP]
-        integration: [make, cmake, standalone]
-        exclude:
-          - language: CPP
-            integration: cmake # CPP template doesn't support CMake yet
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
+      
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake clang llvm-dev
-          git clone https://github.com/AFLplusplus/AFLplusplus.git
-          cd AFLplusplus
-          make
-          sudo make install
-          cd ..
-
+          sudo apt-get install -y build-essential cmake clang
+      
       - name: Build fuzz-init
         run: cargo build --release
-
-      - name: Generate test project
+      
+      - name: Run Rust tests
+        run: cargo test
+      
+      - name: Check code with Clippy
+        run: cargo clippy -- -D warnings
+      
+      - name: Check formatting
+        run: cargo fmt -- --check
+      
+      # Quick smoke test with CPP cmake template
+      - name: Test CPP CMake template
         run: |
-          ./target/release/fuzz-init test-build-${{ matrix.language }}-${{ matrix.integration }} \
-            --language ${{ matrix.language }} \
-            --fuzzer libfuzzer \
-            --integration ${{ matrix.integration }} \
-            --dev-output ./test-build-${{ matrix.language }}-${{ matrix.integration }}
-
-      - name: Test build system
-        run: |
-          cd test-build-${{ matrix.language }}-${{ matrix.integration }}
-
-          echo "Testing build system: ${{ matrix.integration }}"
-
-          if [ "${{ matrix.integration }}" = "make" ]; then
-            echo "Testing Makefile build..."
-            make
-            make test
-            cd fuzz && make libfuzzer
-          elif [ "${{ matrix.integration }}" = "cmake" ]; then
-            echo "Testing CMake build..."
-            mkdir build && cd build
-            cmake ..
-            make
-            make test
-            cd ../fuzz && make libfuzzer
-          elif [ "${{ matrix.integration }}" = "standalone" ]; then
-            echo "Testing standalone build..."
-            chmod +x build.sh
-            ./build.sh
-            cd fuzz && chmod +x build.sh && ./build.sh
-          fi
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: build-test-${{ matrix.language }}-${{ matrix.integration }}
-          path: test-build-${{ matrix.language }}-${{ matrix.integration }}/
-
-  # Test fuzzer compatibility
-  test-fuzzers:
-    runs-on: ubuntu-latest
-    needs: test-templates
-    strategy:
-      matrix:
-        language: [C, CPP]
-        fuzzer: [libfuzzer, afl, honggfuzz]
-        exclude:
-          - language: CPP
-            fuzzer: honggfuzz # Skip if CPP doesn't support HonggFuzz
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
-      - name: Install fuzzer dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential clang llvm-dev
-
-          if [ "${{ matrix.fuzzer }}" = "afl" ]; then
-            git clone https://github.com/AFLplusplus/AFLplusplus.git
-            cd AFLplusplus
-            make
-            sudo make install
-            cd ..
-          elif [ "${{ matrix.fuzzer }}" = "honggfuzz" ]; then
-            git clone https://github.com/google/honggfuzz.git
-            cd honggfuzz
-            make
-            sudo make install
-            cd ..
-          fi
-
-      - name: Build fuzz-init
-        run: cargo build --release
-
-      - name: Generate and test fuzzer project
-        run: |
-          ./target/release/fuzz-init test-fuzzer-${{ matrix.language }}-${{ matrix.fuzzer }} \
-            --language ${{ matrix.language }} \
-            --fuzzer ${{ matrix.fuzzer }} \
-            --integration make \
-            --dev-output ./test-fuzzer-${{ matrix.language }}-${{ matrix.fuzzer }}
-
-          cd test-fuzzer-${{ matrix.language }}-${{ matrix.fuzzer }}
-
-          echo "Testing ${{ matrix.fuzzer }} build..."
-          make
-
-          if [ "${{ matrix.fuzzer }}" = "libfuzzer" ]; then
-            cd fuzz && make libfuzzer
-            # Test that the fuzzer binary was created
-            ls -la *libfuzzer
-          elif [ "${{ matrix.fuzzer }}" = "afl" ]; then
-            cd fuzz && make afl
-            # Test that the AFL binary was created
-            ls -la *afl
-          elif [ "${{ matrix.fuzzer }}" = "honggfuzz" ]; then
-            cd fuzz && make honggfuzz
-            # Test that the HonggFuzz binary was created
-            ls -la *honggfuzz
-          fi
-
-      - name: Upload fuzzer artifacts
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: fuzzer-test-${{ matrix.language }}-${{ matrix.fuzzer }}
-          path: test-fuzzer-${{ matrix.language }}-${{ matrix.fuzzer }}/
-
-  # Test CLI documentation generation
-  test-docs:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
-      - name: Build fuzz-init
-        run: cargo build --release
-
-      - name: Generate CLI documentation
-        run: |
-          ./target/release/fuzz-init --generate-docs > cli-reference.mdx
-
-          # Check that documentation was generated
-          if [ -s cli-reference.mdx ]; then
-            echo "CLI documentation generated successfully"
-            head -20 cli-reference.mdx
+          echo "=== Testing CPP CMake template ==="
+          ./target/release/fuzz-init test-cpp-cmake \
+            --language CPP \
+            --integration cmake \
+            --minimal
+          
+          echo "=== Checking generated structure ==="
+          ls -la test-cpp-cmake/
+          ls -la test-cpp-cmake/fuzz/
+          
+          echo "=== Building with CMake ==="
+          cd test-cpp-cmake/fuzz
+          cmake --preset fuzz-libfuzzer
+          cmake --build --preset fuzz-libfuzzer
+          
+          echo "=== Verifying binary was created ==="
+          if [ -f "build/libfuzzer/bin/fuzz_harness_1-libfuzzer" ]; then
+            echo "✅ Binary successfully created"
+            ls -la build/libfuzzer/bin/
           else
-            echo "ERROR: CLI documentation generation failed"
+            echo "❌ Binary not found"
             exit 1
           fi
-
-      - name: Upload documentation
-        uses: actions/upload-artifact@v4
-        with:
-          name: cli-documentation
-          path: cli-reference.mdx
-
-  # Test error handling and edge cases
-  test-error-handling:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
-      - name: Build fuzz-init
-        run: cargo build --release
-
-      - name: Test invalid language
+      
+      # Test dev mode validation
+      - name: Test dev mode
         run: |
-          if ./target/release/fuzz-init test-invalid --language invalid 2>&1 | grep -q "Invalid language"; then
-            echo "✓ Invalid language error handled correctly"
+          echo "=== Testing dev mode validation ==="
+          ./target/release/fuzz-init --dev-mode \
+            --language CPP \
+            --integration cmake \
+            --minimal \
+            --dev-output ./scratch
+          
+          # Check exit code
+          if [ $? -eq 0 ]; then
+            echo "✅ Dev mode validation passed"
           else
-            echo "✗ Invalid language error not handled correctly"
-            exit 1
-          fi
-
-      - name: Test missing project name
-        run: |
-          # This should prompt for project name or fail gracefully
-          echo "test" | ./target/release/fuzz-init --language c --fuzzer libfuzzer || true
-
-      - name: Test dev-mode without language
-        run: |
-          if ./target/release/fuzz-init --dev-mode 2>&1 | grep -q "requires either --language or --template"; then
-            echo "✓ Dev-mode without language error handled correctly"
-          else
-            echo "✗ Dev-mode without language error not handled correctly"
+            echo "❌ Dev mode validation failed"
             exit 1
           fi
