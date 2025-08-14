@@ -7,6 +7,7 @@ libFuzzer, HonggFuzz, and standalone testing.
 ## Quickstart
 
  - Verify everything works with  `fuzz.sh build && fuzz.sh test`
+ - Fuzz targets are under the `build` directory. 
  - **Important!:** Integrate this directory into your projects overall build.
  - Modify `src/fuzz_harness_1.cpp` to fuzz your project code.
  - Rebuild, fuzz, and find bugs!
