@@ -1,0 +1,191 @@
+name: Auto Release
+
+on:
+  workflow_run:
+    workflows: ["Full Test Suite"]
+    types:
+      - completed
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-and-release:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: write
+      
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Need full history for version detection
+          
+      - name: Get version from Cargo.toml
+        id: version
+        run: |
+          VERSION=$(grep "^version" Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION"
+          
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse "v${{ steps.version.outputs.VERSION }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag v${{ steps.version.outputs.VERSION }} already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Tag v${{ steps.version.outputs.VERSION }} does not exist"
+          fi
+          
+      - name: Create tag and trigger release
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git tag -a "v${{ steps.version.outputs.VERSION }}" -m "Auto-release v${{ steps.version.outputs.VERSION }}"
+          git push origin "v${{ steps.version.outputs.VERSION }}"
+          echo "Created and pushed tag v${{ steps.version.outputs.VERSION }}"
+          echo "This will trigger the release workflow"
+
+  # Build binaries for release
+  build-release:
+    needs: check-and-release
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: fuzz-init-linux-x64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: fuzz-init-macos-x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: fuzz-init-windows-x64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: |
+          cargo build --release --target ${{ matrix.target }}
+
+      - name: Package binary
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp target/${{ matrix.target }}/release/fuzz-init.exe ${{ matrix.artifact_name }}
+          else
+            cp target/${{ matrix.target }}/release/fuzz-init ${{ matrix.artifact_name }}
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}
+          retention-days: 7
+
+  # Create GitHub release with artifacts
+  create-release:
+    needs: build-release
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(grep "^version" Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if release exists
+        id: check_release
+        run: |
+          if gh release view "v${{ steps.version.outputs.VERSION }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Release v${{ steps.version.outputs.VERSION }} already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Release v${{ steps.version.outputs.VERSION }} does not exist"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download artifacts
+        if: steps.check_release.outputs.exists == 'false'
+        uses: actions/download-artifact@v4
+
+      - name: Generate changelog
+        if: steps.check_release.outputs.exists == 'false'
+        id: changelog
+        run: |
+          # Get commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            echo "No previous tag found, including all commits"
+            COMMITS=$(git log --pretty=format:"- %s" | head -20)
+          else
+            echo "Changes since $LAST_TAG:"
+            COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"- %s")
+          fi
+          
+          cat > RELEASE_NOTES.md << EOF
+          # fuzz-init v${{ steps.version.outputs.VERSION }}
+          
+          Automated release after successful CI tests.
+          
+          ## Changes
+          
+          $COMMITS
+          
+          ## Installation
+          
+          Download the appropriate binary for your platform:
+          
+          - **Linux**: \`fuzz-init-linux-x64\`
+          - **macOS**: \`fuzz-init-macos-x64\`
+          - **Windows**: \`fuzz-init-windows-x64.exe\`
+          
+          Make the binary executable (Linux/macOS):
+          \`\`\`bash
+          chmod +x fuzz-init-*
+          \`\`\`
+          
+          ## Usage
+          
+          \`\`\`bash
+          ./fuzz-init --help
+          \`\`\`
+          EOF
+
+      - name: Create release
+        if: steps.check_release.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: fuzz-init v${{ steps.version.outputs.VERSION }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: false
+          files: |
+            fuzz-init-linux-x64/fuzz-init-linux-x64
+            fuzz-init-macos-x64/fuzz-init-macos-x64
+            fuzz-init-windows-x64.exe/fuzz-init-windows-x64.exe

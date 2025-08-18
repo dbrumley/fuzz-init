@@ -4,6 +4,9 @@ on:
   workflow_dispatch: # Manual trigger
   schedule:
     - cron: "0 2 * * 0" # Weekly on Sunday at 2 AM
+  push:
+    branches:
+      - main # Also run on push to main for automated releases
 
 env:
   CARGO_TERM_COLOR: always
@@ -15,18 +18,18 @@ jobs:
       matrix:
         include:
           # C template tests
-          # - language: C
-          #   integration: cmake
-          #   mode: full
-          # - language: C
-          #   integration: cmake
-          #   mode: minimal
-          # - language: C
-          #   integration: make
-          #   mode: full
-          # - language: C
-          #   integration: make
-          #   mode: minimal
+          - language: C
+            integration: cmake
+            mode: full
+          - language: C
+            integration: cmake
+            mode: minimal
+          - language: C
+            integration: make
+            mode: full
+          - language: C
+            integration: make
+            mode: minimal
           # CPP template tests
           - language: CPP
             integration: cmake

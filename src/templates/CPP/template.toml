@@ -94,8 +94,8 @@ path = "fuzz/dictionaries/{{target_name}}.dict"
 template = true 
 
 [[files]]
-condition = "cmake == true"
-path = ["fuzz/cmake"] 
+condition = "integration == 'cmake'"
+paths = ["fuzz/cmake"] 
 
 # ===== DIRECTORY CONFIGURATIONS =====
 
