@@ -1,4 +1,4 @@
-use crate::cli::{Args, find_template_case_insensitive};
+use crate::cli::{find_template_case_insensitive, Args};
 use crate::template_processor::*;
 use crate::types::*;
 use anyhow::{anyhow, Result};
@@ -139,7 +139,9 @@ async fn run_template_validation(args: &Args, session: &mut DevSession) -> Resul
     // Determine which language to test
     let language = if let Some(lang) = &args.language {
         // Use case-insensitive lookup for the language
-        if let Some(actual_template_name) = find_template_case_insensitive(lang, &available_templates) {
+        if let Some(actual_template_name) =
+            find_template_case_insensitive(lang, &available_templates)
+        {
             actual_template_name
         } else {
             return Err(anyhow!(
