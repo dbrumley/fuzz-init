@@ -1,4 +1,4 @@
-use crate::cli::Args;
+use crate::cli::{Args, find_template_case_insensitive};
 use crate::template_processor::*;
 use crate::types::*;
 use anyhow::{anyhow, Result};
@@ -134,11 +134,20 @@ async fn run_template_validation(args: &Args, session: &mut DevSession) -> Resul
     let start_time = Instant::now();
 
     // Get available templates
-    let _available_templates = get_available_templates()?;
+    let available_templates = get_available_templates()?;
 
     // Determine which language to test
     let language = if let Some(lang) = &args.language {
-        lang.clone()
+        // Use case-insensitive lookup for the language
+        if let Some(actual_template_name) = find_template_case_insensitive(lang, &available_templates) {
+            actual_template_name
+        } else {
+            return Err(anyhow!(
+                "Invalid language '{}'. Available: {}",
+                lang,
+                available_templates.join(", ")
+            ));
+        }
     } else if let Some(_template) = &args.template {
         // For remote templates, use a generic name
         "remote".to_string()

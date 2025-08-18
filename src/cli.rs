@@ -5,7 +5,7 @@ use inquire::{Select, Text};
 use std::path::PathBuf;
 
 /// Find a template name case-insensitively and return the actual template name
-fn find_template_case_insensitive(
+pub fn find_template_case_insensitive(
     input_name: &str,
     available_templates: &[String],
 ) -> Option<String> {
