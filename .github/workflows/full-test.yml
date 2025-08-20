@@ -50,7 +50,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake clang
+          sudo apt-get install -y build-essential cmake clang \
+            binutils-dev libunwind8-dev pkg-config
           # Install AFL++ for comprehensive testing
           git clone https://github.com/AFLplusplus/AFLplusplus.git
           cd AFLplusplus
