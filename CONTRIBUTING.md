@@ -2,6 +2,7 @@
 
 - We use Handlebars as our templating language.
 - Test templates with `--dev-mode` for rapid development and validation.
+- Learn more about templates in the [Template System Guide](./TEMPLATING.md).
 
 ## Template Development with Dev Mode
 
