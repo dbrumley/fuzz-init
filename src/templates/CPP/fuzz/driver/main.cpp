@@ -1,4 +1,4 @@
-// Single driver for AFL++/hongfuzz/native that invokes the universal harness:
+// Single driver for AFL++/honggfuzz/native that invokes the universal harness:
 //   extern "C" int LLVMFuzzerTestOneInput(const uint8_t*, size_t);
 // Optional initializer:
 //   extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv);
@@ -91,7 +91,11 @@ static void list_files_in_dir(const char* dir, std::vector<std::string>& out) {
   while (auto* ent = readdir(d)) {
     if (ent->d_name[0] == '.') continue;
     std::string path = std::string(dir) + "/" + ent->d_name;
-    if (is_file(path.c_str())) out.push_back(path);
+    if (is_file(path.c_str())) {
+      out.push_back(path);
+    } else {
+      list_files_in_dir(path.c_str(), out);
+    }
   }
   closedir(d);
 #endif

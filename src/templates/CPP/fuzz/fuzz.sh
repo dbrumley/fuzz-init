@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Engines we support
-ENGINES=("libfuzzer" "afl" "hongfuzz" "standalone")
+ENGINES=("libfuzzer" "afl" "honggfuzz" "standalone")
 
 # Base "fuzz" directory
 {{#if minimal}}
@@ -20,7 +20,7 @@ Usage:
 Engines:
   libfuzzer   → Build with libFuzzer (requires clang++)
   afl         → Build with AFL++ (requires afl-clang-fast++)
-  hongfuzz    → Build with HonggFuzz (requires hfuzz-clang++)
+  honggfuzz    → Build with HonggFuzz (requires hfuzz-clang++)
   standalone  → Build standalone binary (no fuzzing engine)
 
 Examples:
@@ -45,10 +45,10 @@ bindir_for() {
 {{#if (eq integration 'cmake')}}
     libfuzzer) echo "build/libfuzzer/bin" ;;
     afl)       echo "build/afl/bin" ;;
-    hongfuzz)  echo "build/hongfuzz/bin" ;;
+    honggfuzz)  echo "build/honggfuzz/bin" ;;
     standalone) echo "build/standalone/bin" ;;
 {{else if (eq integration 'make')}}
-    libfuzzer|afl|hongfuzz|standalone) echo "fuzz/build" ;;
+    libfuzzer|afl|honggfuzz|standalone) echo "fuzz/build" ;;
 {{/if}}
     *)         return 1 ;;
   esac
@@ -70,7 +70,7 @@ find_bins() {
 
 ensure_seeds() {
   mkdir -p ${FUZZ_DIR}/testsuite
-  [[ -f ${FUZZ_DIR}/testsuite/empty ]] || : > ${FUZZ_DIR}/testsuite/empty
+  [[ -f ${FUZZ_DIR}/testsuite/empty ]] || touch ${FUZZ_DIR}/testsuite/empty
 }
 
 # -------- Build --------
@@ -90,7 +90,7 @@ build_engine() {
 build_all() {
   build_engine libfuzzer
   build_engine afl
-  build_engine hongfuzz
+  build_engine honggfuzz
   build_engine standalone
 }
 
@@ -124,27 +124,27 @@ test_afl() {
     local work="$out/$name"
     mkdir -p "$work"
     echo "+ [AFL++] $name for ${secs}s"
-    afl-fuzz -V "$secs" -i ${FUZZ_DIR}/seeds -o "$work" -- "$bin" @@ || true
+    afl-fuzz -m none -V "$secs" -i ${FUZZ_DIR}/seeds -o "$work" -- "$bin" @@ || true
   done < <(find_bins afl)
 }
 
-test_hongfuzz() {
+test_honggfuzz() {
   local secs="${1:-10}"
-  if ! command -v hongfuzz >/dev/null 2>&1; then
-    echo "!! hongfuzz not found; skipping hongfuzz test"
+  if ! command -v honggfuzz >/dev/null 2>&1; then
+    echo "!! honggfuzz not found; skipping honggfuzz test"
     return 0
   fi
   ensure_seeds
-  local out="${FUZZ_DIR}/hongfuzz-out"
+  local out="${FUZZ_DIR}/honggfuzz-out"
   mkdir -p "$out"
   while IFS= read -r bin; do
     [[ -z "$bin" ]] && continue
     local name; name="$(basename "$bin")"
     local work="$out/$name"
     mkdir -p "$work"
-    echo "+ [hongfuzz] $name for ${secs}s"
-    hongfuzz -i ${FUZZ_DIR}/seeds -o "$work" -t "$secs" -- "$bin" ___FILE___ || true
-  done < <(find_bins hongfuzz)
+    echo "+ [honggfuzz] $name for ${secs}s"
+    honggfuzz -i ${FUZZ_DIR}/seeds -o "$work" -t "$secs" -- "$bin" ___FILE___ || true
+  done < <(find_bins honggfuzz)
 }
 
 test_standalone() {
@@ -164,7 +164,7 @@ test_all() {
   local secs="${1:-10}"
   test_libfuzzer "$secs"
   test_afl "$secs"
-  test_hongfuzz "$secs"
+  test_honggfuzz "$secs"
   test_standalone "$secs"
   echo "Quick tests complete."
 }
@@ -192,7 +192,7 @@ case "$cmd" in
       case "$engine" in
         libfuzzer) test_libfuzzer "$secs" ;;
         afl)       test_afl "$secs" ;;
-        hongfuzz)  test_hongfuzz "$secs" ;;
+        honggfuzz)  test_honggfuzz "$secs" ;;
         standalone) test_standalone "$secs" ;;
       esac
     fi

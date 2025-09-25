@@ -4,7 +4,7 @@ FROM mcr.microsoft.com/vscode/devcontainers/base:debian
 # Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install claude code. 
+# Install claude code.
 RUN apt-get update && apt-get install -y \
     nodejs \
     npm
@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     libssl-dev \
     clang \
-    afl++ 
+    afl++
 
 #\
 #&& rm -rf /var/lib/apt/lists/*
@@ -46,11 +46,11 @@ USER root
 
 
 # Install HonggFuzz
-# Hongfuzz dependencies 
+# Honggfuzz dependencies
 RUN apt-get install -y \
-    pkg-config \ 
-    libunwind8-dev \ 
-    binutils-dev 
+    pkg-config \
+    libunwind8-dev \
+    binutils-dev
 
 RUN cd /tmp && \
     git clone https://github.com/google/honggfuzz.git && \

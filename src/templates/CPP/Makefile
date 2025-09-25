@@ -137,12 +137,12 @@ fuzz-afl:
 	  echo "⏭️  AFL++ requires afl-clang-fast++"; \
 	fi
 
-fuzz-hongfuzz:
+fuzz-honggfuzz:
 	@echo "🔨 Building library and fuzz targets for HonggFuzz..."
 	@if [ "$(HAVE_HFUZZ)" = "yes" ]; then \
 	  $(MAKE) clean-lib && \
 	  $(MAKE) lib CXX=hfuzz-clang++ CXXFLAGS="-g -O1 -fsanitize=address,undefined -I$(INC_DIR) -std=c++17" && \
-	  $(MAKE) -C fuzz hongfuzz LIBPART=../$(LIBRARY) CXX_HFUZZ=hfuzz-clang++; \
+	  $(MAKE) -C fuzz honggfuzz LIBPART=../$(LIBRARY) CXX_HFUZZ=hfuzz-clang++; \
 	else \
 	  echo "⏭️  HonggFuzz requires hfuzz-clang++"; \
 	fi
@@ -170,11 +170,11 @@ fuzz-info:
 # =============================================================================
 
 {{#unless minimal}}
-clean: 
+clean:
 	rm -rf $(BUILD_DIR)
 	$(MAKE) -C test clean
 {{else}}
-clean: 
+clean:
 	rm -rf $(BUILD_DIR)
 {{/unless}}
 
@@ -194,7 +194,7 @@ help:
 	@echo "  fuzz             - Build all fuzz targets (using single library)"
 	@echo "  fuzz-libfuzzer   - Rebuild library and fuzz with clang/ASan/UBSan"
 	@echo "  fuzz-afl         - Rebuild library and fuzz with AFL++ instrumentation"
-	@echo "  fuzz-hongfuzz    - Rebuild library and fuzz with HonggFuzz instrumentation"
+	@echo "  fuzz-honggfuzz    - Rebuild library and fuzz with HonggFuzz instrumentation"
 	@echo "  fuzz-standalone  - Rebuild library and fuzz without instrumentation"
 	@echo "  fuzz-info        - Show detected fuzzing environment"
 	@echo "  fuzz-clean       - Clean fuzz build artifacts"
