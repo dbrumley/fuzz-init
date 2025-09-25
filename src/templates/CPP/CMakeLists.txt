@@ -32,7 +32,7 @@ target_link_libraries(hellofuzz PRIVATE mylib)
 
 set_target_properties(hellofuzz PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+  EXCLUDE_FROM_ALL TRUE
 )
 
 add_subdirectory(fuzz)
-
