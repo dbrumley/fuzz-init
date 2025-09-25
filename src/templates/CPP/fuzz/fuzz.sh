@@ -6,10 +6,14 @@ ENGINES=("libfuzzer" "afl" "honggfuzz" "standalone")
 
 # Base "fuzz" directory
 {{#if minimal}}
-FUZZ_DIR=""
+FUZZ_DIR="."
 {{else}}
-FUZZ_DIR="fuzz/"
+FUZZ_DIR="fuzz"
 {{/if}}
+
+TESTSUITE=${FUZZ_DIR}/testsuite
+RESULTS=${FUZZ_DIR}/results
+
 
 usage() {
   cat <<'USAGE'
@@ -68,22 +72,41 @@ find_bins() {
   fi
 }
 
-ensure_seeds() {
-  mkdir -p ${FUZZ_DIR}/testsuite
-  [[ -f ${FUZZ_DIR}/testsuite/empty ]] || touch ${FUZZ_DIR}/testsuite/empty
-}
 
 # -------- Build --------
 
 build_engine() {
   local engine="$1"
+  local log="${RESULTS}/${engine}-build.log"
 {{#if (eq integration 'cmake')}}
   local preset="fuzz-$engine"
-  echo "+ cmake --preset $preset && cmake --build --preset $preset"
-  cmake --preset "$preset" && cmake --build --preset "$preset"
+  printf "%-60s" "+ cmake --preset $preset"
+  if cmake --preset "$preset" > $log 2>&1; then
+      echo "[OK]"
+      printf "%-60s" "+ cmake --build --preset $preset"
+      if cmake --build --preset "$preset" >> $log 2>&1; then
+          echo "[OK]"
+      else
+          echo "[FAIL]"
+          cat $log
+          echo "Failed to build fuzzer, the above log is stored at"
+          echo $(realpath $log)
+      fi
+  else
+      echo "[SKIP]"
+      echo "- Note: engine $engine is not supported"
+      echo "- Note: see `realpath $log` for details"
+  fi
 {{else if (eq integration 'make')}}
-  echo "+ make fuzz-$engine"
-  make "fuzz-$engine"
+  printf "%-60s" "+ make fuzz-$engine"
+  if make "fuzz-$engine" > $log 2>&1; then
+      echo "[OK]"
+  else
+      echo "[FAIL]"
+      cat $log
+      echo "- Warning: Failed to build fuzzer, the above log is stored at"
+      echo $(realpath $log)
+  fi
 {{/if}}
 }
 
@@ -98,14 +121,14 @@ build_all() {
 
 test_libfuzzer() {
   local secs="${1:-10}"
-  ensure_seeds
   while IFS= read -r bin; do
     [[ -z "$bin" ]] && continue
-    local name; name="$(basename "$bin")"
-    local corpus="${FUZZ_DIR}/testsuite/$name"
-    mkdir -p "$corpus"
+    local name="$(basename "$bin")"
+    local output="${RESULTS}/$name"
+    mkdir -p "$output"
+    cp -r "$TESTSUITE"/* "$output"
     echo "+ [libfuzzer] $name for ${secs}s"
-    "$bin" -max_total_time="$secs" -print_final_stats=1 "$corpus" ${FUZZ_DIR}/testsuite/ || true
+    "$bin" -max_total_time="$secs" -print_final_stats=1 "$output" || true
   done < <(find_bins libfuzzer)
 }
 
@@ -115,16 +138,13 @@ test_afl() {
     echo "!! afl-fuzz not found; skipping AFL++ test"
     return 0
   fi
-  ensure_seeds
-  local out="${FUZZ_DIR}/afl-out"
-  mkdir -p "$out"
   while IFS= read -r bin; do
     [[ -z "$bin" ]] && continue
-    local name; name="$(basename "$bin")"
-    local work="$out/$name"
+    local name="$(basename "$bin")"
+    local work="$RESULTS/$name"
     mkdir -p "$work"
     echo "+ [AFL++] $name for ${secs}s"
-    afl-fuzz -m none -V "$secs" -i ${FUZZ_DIR}/seeds -o "$work" -- "$bin" @@ || true
+    afl-fuzz -m none -V "$secs" -i "$TESTSUITE" -o "$work" -- "$bin" @@ || true
   done < <(find_bins afl)
 }
 
@@ -134,29 +154,24 @@ test_honggfuzz() {
     echo "!! honggfuzz not found; skipping honggfuzz test"
     return 0
   fi
-  ensure_seeds
-  local out="${FUZZ_DIR}/honggfuzz-out"
-  mkdir -p "$out"
   while IFS= read -r bin; do
     [[ -z "$bin" ]] && continue
-    local name; name="$(basename "$bin")"
-    local work="$out/$name"
+    local name="$(basename "$bin")"
+    local work="$RESULTS/$name"
     mkdir -p "$work"
     echo "+ [honggfuzz] $name for ${secs}s"
-    honggfuzz -i ${FUZZ_DIR}/seeds -o "$work" -t "$secs" -- "$bin" ___FILE___ || true
+    timeout -k 1 $secs honggfuzz -i "$TESTSUITE" -o "$work" -- "$bin" ___FILE___ || true
   done < <(find_bins honggfuzz)
 }
 
 test_standalone() {
   local secs="${1:-10}"
-  ensure_seeds
   while IFS= read -r bin; do
     [[ -z "$bin" ]] && continue
-    local name; name="$(basename "$bin")"
-    echo "+ [standalone] smoke-test $name using seeds (timeout ${secs}s each)"
-    for s in ${FUZZ_DIR}/seeds/*; do
-      timeout -k 1 "${secs}"s bash -c "cat \"$s\" | \"$bin\"" || true
-    done
+    local name="$(basename "$bin")"
+    echo "+ [standalone] $name using testsuite (timeout ${secs}s each)"
+    echo timeout -k 1 $secs "./$bin" "$TESTSUITE"
+    timeout -k 1 $secs "./$bin" "$TESTSUITE"
   done < <(find_bins standalone)
 }
 
@@ -170,6 +185,10 @@ test_all() {
 }
 
 # -------- Main --------
+
+mkdir -p ${TESTSUITE}
+mkdir -p ${RESULTS}
+printf 'A%.0s' {1..256} > ${TESTSUITE}/default
 
 cmd="${1:-}"; shift || true
 case "$cmd" in
