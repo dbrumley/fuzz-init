@@ -24,6 +24,7 @@
 #define open _open
 #define read _read
 #define stat _stat
+#define fileno _fileno
 #define close _close
 #define O_RDONLY _O_RDONLY
 #define S_IFMT _S_IFMT
@@ -165,7 +166,7 @@ int main(int argc, char** argv) {
   if (__sanitizer_set_death_callback) __sanitizer_set_death_callback(&on_sanitizer_death);
   // Prefer fd routing if available
   if (__sanitizer_set_report_fd) {
-    __sanitizer_set_report_fd(reinterpret_cast<void*>(FUZZ_FILENO(stderr)));
+    __sanitizer_set_report_fd(reinterpret_cast<void*>(fileno(stderr)));
   }
 #endif
 
