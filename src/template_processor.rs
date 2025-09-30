@@ -24,9 +24,8 @@ pub fn get_available_templates() -> anyhow::Result<Vec<String>> {
                     .path()
                     .file_name()
                     .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
+                    .to_string_lossy()
+                    .into_owned(),
             );
         }
     }
@@ -92,12 +91,9 @@ pub fn load_template_metadata(template_name: &str) -> anyhow::Result<Option<Temp
 }
 
 pub fn setup_handlebars() -> Handlebars<'static> {
-    let handlebars = Handlebars::new();
-
     // Handlebars 6.x has built-in comparison helpers: eq, ne, gt, gte, lt, lte
     // and logical helpers: and, or, not - no need to register custom ones
-
-    handlebars
+    Handlebars::new()
 }
 
 pub fn load_template_metadata_from_path(
@@ -237,23 +233,8 @@ fn process_embedded_template_directory(
         };
 
         // Check directory inclusion rules
-        if let Some(metadata) = metadata {
-            // Check if this directory should be excluded in minimal mode
-            if data
-                .get("minimal")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-            {
-                // Only apply full_mode_only exclusions at the template root level
-                if relative_path.is_empty()
-                    && metadata
-                        .file_conventions
-                        .full_mode_only
-                        .contains(&subdir_name.to_string())
-                {
-                    continue;
-                }
-            }
+        if should_skip_directory(metadata, data, relative_path, &subdir_name.to_string()) {
+            continue;
         }
 
         // Template the directory name if needed
@@ -348,11 +329,7 @@ fn should_include_by_convention(
     }
 
     // Check if file should be excluded in minimal mode
-    let is_minimal = data
-        .get("minimal")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    if is_minimal {
+    if is_minimal(data) {
         for full_only_dir in &conventions.full_mode_only {
             // Only exclude if we're at the root level (no parent directories)
             if relative_path == *full_only_dir {
@@ -486,23 +463,8 @@ fn process_filesystem_directory_recursive(
 
         if file_type.is_dir() {
             // Check directory inclusion rules
-            if let Some(metadata) = metadata {
-                // Check if this directory should be excluded in minimal mode
-                if data
-                    .get("minimal")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-                {
-                    // Only apply full_mode_only exclusions at the template root level
-                    if relative_path.is_empty()
-                        && metadata
-                            .file_conventions
-                            .full_mode_only
-                            .contains(&file_name)
-                    {
-                        continue;
-                    }
-                }
+            if should_skip_directory(metadata, data, relative_path, &file_name) {
+                continue;
             }
 
             // Template the directory name if needed
@@ -569,4 +531,27 @@ fn process_filesystem_directory_recursive(
     }
 
     Ok(())
+}
+
+fn is_minimal(data: &serde_json::Value) -> bool {
+    data.get("minimal")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// checks if a directory should be ignored in a full mode generation.
+fn should_skip_directory(
+    metadata: Option<&TemplateMetadata>,
+    data: &serde_json::Value,
+    relative_path: &str,
+    file_name: &String,
+) -> bool {
+    // only apply at the toplevel and in the full mode.
+    if !is_minimal(data) || !relative_path.is_empty() {
+        return false;
+    }
+    let Some(metadata) = metadata else {
+        return false;
+    };
+    metadata.file_conventions.full_mode_only.contains(file_name)
 }

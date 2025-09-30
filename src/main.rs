@@ -1,3 +1,4 @@
+use anyhow::{bail, Context};
 use clap::Parser;
 use serde_json::json;
 use std::path::Path;
@@ -30,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
     // Get available templates
     let available_templates = get_available_templates()?;
     if available_templates.is_empty() {
-        anyhow::bail!("No embedded templates found.");
+        bail!("No embedded templates found.");
     }
 
     // Track which values came from prompts for hint generation
@@ -83,13 +84,7 @@ async fn main() -> anyhow::Result<()> {
     // Create parent directories if they don't exist
     if let Some(parent) = out_path.parent() {
         if !parent.as_os_str().is_empty() && parent != Path::new(".") {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to create parent directories for '{}': {}",
-                    project_name,
-                    e
-                )
-            })?;
+            std::fs::create_dir_all(parent).context("Failed to create parent directories")?;
         }
     }
 
@@ -161,7 +156,7 @@ The `fuzz-init` command-line tool helps you scaffold fuzzing projects for multip
 # Full C project with tutorial
 fuzz-init my-c-project --language c --fuzzer libfuzzer --integration make
 
-# Minimal C fuzzing setup for existing projects  
+# Minimal C fuzzing setup for existing projects
 fuzz-init my-c-project --language c --minimal --fuzzer libfuzzer --integration make
 ```
 
@@ -278,7 +273,7 @@ fuzz-init my-project --language c --integration makefile
 **Best for**: Projects already using CMake
 
 - Generates CMakeLists.txt with fuzzer targets
-- Integrates with existing CMake builds  
+- Integrates with existing CMake builds
 - Supports `cmake --build . --target fuzz-libfuzzer`
 
 ```bash
@@ -353,11 +348,11 @@ fuzz-init --test
 
 ### C Template
 - **Universal fuzzing design**: Write `LLVMFuzzerTestOneInput` once, works with all fuzzers
-- **Library-based architecture**: Builds proper libraries that fuzzing harnesses link against  
+- **Library-based architecture**: Builds proper libraries that fuzzing harnesses link against
 - **Comprehensive testing**: Unit tests, integration tests, and fuzzing workflows
 - **Multi-platform support**: Works on macOS, Linux with or without fuzzer tools installed
 
-### C++ Template  
+### C++ Template
 - **AFL driver support**: Includes AFL-compatible driver for C++ projects
 - **Modern C++**: Uses current C++ standards and best practices
 - **Build system integration**: Full Makefile and build script support
@@ -395,7 +390,7 @@ This will:
 ## See Also
 
 - [C Fuzzing Tutorial](/docs/c/intro) - Complete guide to C fuzzing
-- [Rust Fuzzing Tutorial](/docs/rust/intro) - Rust-specific fuzzing techniques  
+- [Rust Fuzzing Tutorial](/docs/rust/intro) - Rust-specific fuzzing techniques
 - [Fuzzing Fundamentals](/docs/fundamentals/what-is-fuzzing) - Introduction to fuzzing concepts
 - [Mayhem Platform](/docs/mayhem/installation) - Advanced fuzzing with Mayhem Security
 "#,
