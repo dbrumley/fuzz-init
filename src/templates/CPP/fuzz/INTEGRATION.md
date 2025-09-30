@@ -7,7 +7,7 @@ libFuzzer, HonggFuzz, and standalone testing.
 ## Quickstart
 
  - Verify everything works with  `fuzz.sh build && fuzz.sh test`
- - Fuzz targets are under the `build` directory. 
+ - Fuzz targets are under the `build` directory.
  - **Important!:** Integrate this directory into your projects overall build.
  - Modify `src/fuzz_harness_1.cpp` to fuzz your project code.
  - Rebuild, fuzz, and find bugs!
@@ -17,7 +17,7 @@ libFuzzer, HonggFuzz, and standalone testing.
 There are four main steps to integrating this scaffolding into your project:
 
 1. **Integrate**: Add this directory (`fuzz`) so that it's built with your
-   entire project. 
+   entire project.
 2. **Compilers & Instrumentation (Recommended)**: Set up a built target with
    the appropriate instrumentation and sanitizer flags.
 3. **Harness**: Write fuzz harnesses that target application logic on your
@@ -30,44 +30,44 @@ There are four main steps to integrating this scaffolding into your project:
 
 The `fuzz` directory should be integrated into your overall project so that
 your fuzz harnesses stay in sync with your source code. We have provided a
-skeleton for several build/integration systems and fuzzing engines. 
+skeleton for several build/integration systems and fuzzing engines.
 
 ### Fuzzing Engines
 
 The script `./fuzz.sh` shows how to build this repo for several different
 fuzzing engines.  We have standardized harnesses around
 `LLVMFuzzerTestOneInput` used by libfuzzer, and have included drivers for
-other fuzzers to use this as the harness entrypoint.  
+other fuzzers to use this as the harness entrypoint.
 
  - Out-of-the-box this will build for all fuzzers installed on your system.
  - You can do native builds, choose one fuzzing engine, or build for multiple
    -- it's up to you.
  - **Picking a fuzzing engine**:
-    - **AFL** is the best choice for applications. 
+    - **AFL** is the best choice for applications.
         - AFL requires linking against a `main` function. We have provided a
           universal AFL harness driver under `driver/main.cpp`
         - Install with `apt-get install afl++`.
-        - Set your C++ compiler to `afl-clang-fast++` or `afl-clang-g++`. 
-        - You can separately enable sanitizers. 
-    - **libfuzzer** is the best choice for pure libraries. 
+        - Set your C++ compiler to `afl-clang-fast++` or `afl-clang-g++`.
+        - You can separately enable sanitizers.
+    - **libfuzzer** is the best choice for pure libraries.
         - libfuzzer does not need a driver and uses it's own `main` function.
         - It uses the same process for each fuzzing iteration to improve
           speed, but this also means memory leaks accumulate and can
-          cause an OOM (out-of-memory) error. 
+          cause an OOM (out-of-memory) error.
         - It requires clang. Install with `apt-get install clang`
     - **honggfuzz** is an alternative to AFL++. See `Dockerfile` for an
-      example installation of **hongfuzz**. 
+      example installation of **honggfuzz**.
     - [Mayhem](https://mayhem.security) is the most comprehensive, and allows
       for native (uninstrumented) fuzzing. It also supports running AFL,
-      libfuzzer, and hongfuzz targets. Get a free trial at
-      [https://app.mayhem.security]. 
-    
+      libfuzzer, and honggfuzz targets. Get a free trial at
+      [https://app.mayhem.security].
+
 
 {{#if (eq integration 'cmake')}}
 ### CMake Integration
 
 Start by adding this directory (`fuzz`) to your top-level `CMakeLists.txt`
-file: 
+file:
 ```Makefile
 # Add to your CMakeLists.txt
 add_subdirectory(fuzz)
@@ -78,8 +78,8 @@ flags to your harnesses:
 ```Makefile
 # Use any project-level headers
 target_include_directories(${FUZZ_EXE} PRIVATE ${CMAKE_SOURCE_DIR}/include)
-# Link against any project-level libraries. 
-target_link_libraries(${FUZZ_EXE} PRIVATE mylib)  
+# Link against any project-level libraries.
+target_link_libraries(${FUZZ_EXE} PRIVATE mylib)
 ```
 
 The `fuzz-init` scaffolding also sets up `cmake` presets.
@@ -92,7 +92,7 @@ The `fuzz-init` scaffolding also sets up `cmake` presets.
       "fuzz-standalone" - Fuzz (standalone)
       "fuzz-libfuzzer"  - Fuzz (libFuzzer)
       "fuzz-afl"        - Fuzz (AFL++)
-      "fuzz-hongfuzz"   - Fuzz (Hongfuzz)   
+      "fuzz-honggfuzz"  - Fuzz (Honggfuzz)
 
    # Build libfuzzer targets
    cmake --preset fuzz-libfuzzer && cmake --build --preset fuzz-libfuzzer
@@ -102,12 +102,12 @@ The `fuzz-init` scaffolding also sets up `cmake` presets.
 
 
 **Note:** Unfortunately addressing every possible build configuration is out
-of scope for this tool; please see the `cmake` documentation.  
+of scope for this tool; please see the `cmake` documentation.
 
 **Tips:**
 - **Important!** You need to compile your *entire* project with instrumentation
    and sanitizers, not just this `fuzz` directory.
-- Common compiler settings can be found under the `cmake/` directory. 
+- Common compiler settings can be found under the `cmake/` directory.
 - `CMakePresets.json` gives example recipies for using the above `cmake`
   directives.
 - AFL++ requires the entire project be compiled with `afl-{g,clang}++` compiler
@@ -147,17 +147,17 @@ We provide `fuzz.sh`, but you can also directly use `make`:
    # For libFuzzer
    make clean
    CXX=clang++ CXXFLAGS="-fsanitize=address,undefined -g -O1" make
-   
+
    # For AFL++
    make clean
    CXX=afl-clang-fast++ CXXFLAGS="-fsanitize=address,undefined -g -O1" make
-   
+
    # Similar for other fuzzers...
    ```
 
 
 **Note:** Unfortunately addressing every possible build configuration is out
-of scope for this tool; please see the `make` documentation.  
+of scope for this tool; please see the `make` documentation.
 
 **Tips:**
 - **Important!** You need to compile your *entire* project with instrumentation
@@ -175,23 +175,23 @@ of scope for this tool; please see the `make` documentation.
 ```bash
 .
 ├── CMakeLists.txt       # (cmake only) cmake build directives
-├── CMakePresets.json    # (cmake only) build prefixes; see cmake --list-presets 
+├── CMakePresets.json    # (cmake only) build prefixes; see cmake --list-presets
 ├── fuzz.sh              # helper utility to build and test fuzzers
 ├── INTEGRATION.md       # this document
 ├── Mayhemfile           # Template Mayhemfile
 ├── build                # Build output
 │   ├── afl              # AFL compiled targets. Requires afl package
-│   ├── hongfuzz         # Hongfuzz compiled targets. Requires hongfuzz
+│   ├── honggfuzz         # Honggfuzz compiled targets. Requires honggfuzz
 │   ├── libfuzzer        # libfuzzer compiled targets. Requires clang
 │   └── standalone       # uninstrumented targets. Native compilation.
 ├── cmake                # (cmake only) cmake directives for each fuzzer
 │   ├── afl.cmake
-│   ├── hongfuzz.cmake
+│   ├── honggfuzz.cmake
 │   ├── libfuzzer.cmake
 │   └── standalone.cmake
 ├── dictionaries         # (Optional) fuzz dictionary location
 │   └── fuzz_harness_1.dict
-├── driver               
+├── driver
 │   └── main.cpp         # AFL/native main() driver for targets
 ├── src                  # Standard location for all fuzz harnesses
 │   └── fuzz_harness_1.cpp # A single harness
@@ -209,12 +209,12 @@ fuzzers.  Each harness is placed under `src` and must implement
 
   - Place harnesses under `src`, using one file per harness.
   - Place the starting test suite/corpus for the harness under
-    `testsuite/<harness name>`.  
+    `testsuite/<harness name>`.
   - (Optional) Dictionaries can significanty improve anything dealing with
     text. Place dictionaries under `dictionaries/<harness name>.dict`.
   - Set up your main project to build most files into a library. This will
     make testing -- not just fuzzing -- much easier to manage by simplifying
-    includes and linking. 
+    includes and linking.
 
 
 
@@ -225,13 +225,13 @@ For example:
 
 ```bash
 # Test that your libfuzzer target harness works
-echo "test" | ./build/libfuzzer/bin/fuzz_harness_1-libfuzzer 
+echo "test" | ./build/libfuzzer/bin/fuzz_harness_1-libfuzzer
 
 # Run libfuzzer target harness for 60 seconds
 ./build/libfuzzer/bin/fuzz_harness_1-libfuzzer -max_total_time=60
 
 # Run AFL for 10 seconds using the testsuite and putting results in 'out'
-mkdir out 
+mkdir out
 afl-fuzz -i testsuite/fuzz_harness_1/ -o out -V 10 -- build/afl/bin/fuzz_harness_1-afl
 ```
 
@@ -265,7 +265,7 @@ cp src/{{target_name}}.cpp src/decoder_fuzz.cpp
 {{#if (eq integration 'cmake')}}
 Update `fuzz/CMakeLists.txt` to build additional targets:
 ```cmake
-set(FUZZ_HARNESS_SRCS 
+set(FUZZ_HARNESS_SRCS
   "${FUZZ_SRC_DIR}/{{target_name}}.cpp"
   "${FUZZ_SRC_DIR}/parser_fuzz.cpp"
   "${FUZZ_SRC_DIR}/decoder_fuzz.cpp"
@@ -301,7 +301,7 @@ Update `dictionaries/{{target_name}}.dict` with protocol-specific tokens:
 ```
 # JSON example
 "null"
-"true" 
+"true"
 "false"
 "\"key\":"
 

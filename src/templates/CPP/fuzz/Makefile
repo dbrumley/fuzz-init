@@ -36,16 +36,16 @@ LIBPART ?= ../build/libmylib.a
 # concrete targets per harness
 LIBFUZZER_BINS := $(foreach h,$(HARNESS_NAMES),$(BUILD_DIR)/$(h)-libfuzzer)
 AFL_BINS       := $(foreach h,$(HARNESS_NAMES),$(BUILD_DIR)/$(h)-afl)
-HFUZZ_BINS     := $(foreach h,$(HARNESS_NAMES),$(BUILD_DIR)/$(h)-hongfuzz)
+HFUZZ_BINS     := $(foreach h,$(HARNESS_NAMES),$(BUILD_DIR)/$(h)-honggfuzz)
 PLAIN_BINS     := $(foreach h,$(HARNESS_NAMES),$(BUILD_DIR)/$(h)-standalone)
 
-.PHONY: all env-summary summary clean help libfuzzer afl hongfuzz standalone
+.PHONY: all env-summary summary clean help libfuzzer afl honggfuzz standalone
 all: env-summary $(LIBFUZZER_BINS) $(AFL_BINS) $(HFUZZ_BINS) $(PLAIN_BINS) summary
 
 # Individual fuzzer targets
 libfuzzer: env-summary $(LIBFUZZER_BINS) summary
 afl: env-summary $(AFL_BINS) summary
-hongfuzz: env-summary $(HFUZZ_BINS) summary
+honggfuzz: env-summary $(HFUZZ_BINS) summary
 standalone: env-summary $(PLAIN_BINS) summary
 
 # ---------- one-time environment summary ----------
@@ -91,25 +91,25 @@ $(BUILD_DIR)/%-afl: $(BUILD_DIR)/%.afl.harness.o $(BUILD_DIR)/%.afl.driver.o | $
 	  echo "⏭️  AFL++ skip (afl-clang-fast++ not found): $@"; \
 	fi
 
-# ---------- hongfuzz (driver + harness) ----------
+# ---------- honggfuzz (driver + harness) ----------
 $(BUILD_DIR)/%.hfuzz.harness.o: src/%.cpp | $(BUILD_DIR)
 	@if [ "$(HAVE_HFUZZ)" = "yes" ]; then \
-	  echo "[hongfuzz] compiling harness $< with hfuzz-clang++ + ASan+UBSan"; \
+	  echo "[honggfuzz] compiling harness $< with hfuzz-clang++ + ASan+UBSan"; \
 	  $(CXX_HFUZZ) $(COMMON) $(SAN) $(INCLUDES) -c $< -o $@; \
 	else :; fi
 
 $(BUILD_DIR)/%.hfuzz.driver.o: $(DRIVER_SRC) | $(BUILD_DIR)
 	@if [ "$(HAVE_HFUZZ)" = "yes" ]; then \
-	  echo "[hongfuzz] compiling driver $(DRIVER_SRC) with hfuzz-clang++ + ASan+UBSan"; \
+	  echo "[honggfuzz] compiling driver $(DRIVER_SRC) with hfuzz-clang++ + ASan+UBSan"; \
 	  $(CXX_HFUZZ) $(COMMON) $(SAN) $(INCLUDES) -c $< -o $@; \
 	else :; fi
 
-$(BUILD_DIR)/%-hongfuzz: $(BUILD_DIR)/%.hfuzz.harness.o $(BUILD_DIR)/%.hfuzz.driver.o | $(BUILD_DIR)
+$(BUILD_DIR)/%-honggfuzz: $(BUILD_DIR)/%.hfuzz.harness.o $(BUILD_DIR)/%.hfuzz.driver.o | $(BUILD_DIR)
 	@if [ "$(HAVE_HFUZZ)" = "yes" ]; then \
-	  echo "[hongfuzz] linking $@"; \
+	  echo "[honggfuzz] linking $@"; \
 	  $(CXX_HFUZZ) $(COMMON) $(SAN) $^ $(LIBPART) -o $@; \
 	else \
-	  echo "⏭️  hongfuzz skip (hfuzz-clang++ not found): $@"; \
+	  echo "⏭️  honggfuzz skip (hfuzz-clang++ not found): $@"; \
 	fi
 
 # ---------- plain (driver + harness) ----------
@@ -146,12 +146,12 @@ summary:
 	  else \
 	    echo "  - afl       : skipped: see build log"; \
 	  fi; \
-	  if [ -f "$(BUILD_DIR)/$$h-hongfuzz" ]; then \
-	    echo "  - hongfuzz  : built: $(BUILD_DIR)/$$h-hongfuzz"; \
+	  if [ -f "$(BUILD_DIR)/$$h-honggfuzz" ]; then \
+	    echo "  - honggfuzz  : built: $(BUILD_DIR)/$$h-honggfuzz"; \
 	  elif [ "$(HAVE_HFUZZ)" != "yes" ]; then \
-	    echo "  - hongfuzz  : skipped: install hongfuzz (apt: honggfuzz, brew: honggfuzz) and rerun make"; \
+	    echo "  - honggfuzz  : skipped: install honggfuzz (apt: honggfuzz, brew: honggfuzz) and rerun make"; \
 	  else \
-	    echo "  - hongfuzz  : skipped: see build log"; \
+	    echo "  - honggfuzz  : skipped: see build log"; \
 	  fi; \
 	  if [ -f "$(BUILD_DIR)/$$h-standalone" ]; then \
 	    echo "  - standalone: built: $(BUILD_DIR)/$$h-standalone"; \
@@ -180,7 +180,7 @@ help:
 	@echo "  2. Build each harness with available fuzzers:"
 	@echo "     - libfuzzer  (requires clang++)"
 	@echo "     - afl        (requires afl-clang-fast++)"
-	@echo "     - hongfuzz   (requires hfuzz-clang++)"
+	@echo "     - honggfuzz   (requires hfuzz-clang++)"
 	@echo "     - standalone (always built)"
 	@echo ""
 	@echo "Output binaries: build/<harness>-<fuzzer>"

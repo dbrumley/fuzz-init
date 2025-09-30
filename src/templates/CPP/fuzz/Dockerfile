@@ -1,4 +1,4 @@
-# Use Debian as the base. 
+# Use Debian as the base.
 FROM debian:stable
 
 # Use this instead if you want a devcontainer for vscode
@@ -21,14 +21,14 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     libssl-dev \
     clang \
-    afl++   
+    afl++
 
 
-# Needed for hongfuzz: install dependencies and honggfuzz
+# Needed for honggfuzz: install dependencies and honggfuzz
 RUN apt-get install -y \
-    pkg-config \ 
-    libunwind8-dev \ 
-    binutils-dev 
+    pkg-config \
+    libunwind8-dev \
+    binutils-dev
 
 RUN cd /tmp && \
     git clone https://github.com/google/honggfuzz.git && \
@@ -43,7 +43,7 @@ ENV AFL_SKIP_CPUFREQ=1
 ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1
 
 
-# If using vscode, switch to that user. 
+# If using vscode, switch to that user.
 USER vscode
 
 # Set working directory

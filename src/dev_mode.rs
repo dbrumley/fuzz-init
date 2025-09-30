@@ -359,26 +359,18 @@ async fn generate_test_project(
 ) -> Result<()> {
     // Set up handlebars and data for template processing
     let handlebars = setup_handlebars();
-
-    let data = json!({
-        "project_name": project_dir.file_name().unwrap().to_str().unwrap(),
-        "target_name": project_dir.file_name().unwrap().to_str().unwrap(),
-        //"default_fuzzer": config.fuzzer,
-        "integration": config.integration,
-        "minimal": config.minimal
-    });
+    let data = create_template_vars(config, project_dir);
 
     // Process template
-    process_template_directory(&config.language, project_dir, &handlebars, &data, metadata)?;
-
-    Ok(())
+    process_template_directory(&config.language, project_dir, &handlebars, &data, metadata)
 }
 
 fn create_template_vars(config: &TestConfiguration, project_dir: &Path) -> serde_json::Value {
+    let project_name = project_dir.file_name().unwrap().to_str().unwrap();
     json!({
         "project_dir": project_dir.to_str().unwrap(),
-        "project_name": project_dir.file_name().unwrap().to_str().unwrap(),
-        "target_name": project_dir.file_name().unwrap().to_str().unwrap(),
+        "project_name": project_name,
+        "target_name": project_name,
         "integration": config.integration,
         "minimal": config.minimal,
         "language": config.language,

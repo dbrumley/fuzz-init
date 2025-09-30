@@ -48,7 +48,7 @@ condition = "integration == 'cmake'"
 paths = [
     "fuzz/CMakeLists.txt",
     "fuzz/cmake/afl.cmake",
-    "fuzz/cmake/honggfuzz.cmake", 
+    "fuzz/cmake/honggfuzz.cmake",
     "fuzz/cmake/libfuzzer.cmake",
     "fuzz/cmake/standalone.cmake"
 ]
@@ -74,6 +74,12 @@ paths = ["fuzz.sh"]
 executable = true
 template = true
 
+[[files]]
+condition = "minimal == true"
+paths = ["fuzz/fuzz.sh"]
+executable = true
+template = true
+
 # Tutorial and documentation (full mode only)
 [[files]]
 condition = "minimal == false"
@@ -82,7 +88,7 @@ paths = ["TUTORIAL.md", "Dockerfile"]
 # Dictionary file - uses template for filename but not content
 [[files]]
 path = "fuzz/dictionaries/{{target_name}}.dict"
-template = true 
+template = true
 
 # ===== DIRECTORY CONFIGURATIONS =====
 
@@ -97,7 +103,7 @@ content = """
 🎯 {{project_name}} C Fuzzing Project Created!
 
 {{#if minimal}}
-   Your fuzzing harness is ready in the fuzz directory. 
+   Your fuzzing harness is ready in the fuzz directory.
 {{else}}
 📁 Full mode: Complete project with example library and fuzzing setup.
 {{/if}}

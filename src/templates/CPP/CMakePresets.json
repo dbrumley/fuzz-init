@@ -36,11 +36,11 @@
       "toolchainFile": "fuzz/cmake/afl.cmake"
     },
     {
-      "name": "fuzz-hongfuzz",
-      "displayName": "Fuzz (Hongfuzz)",
+      "name": "fuzz-honggfuzz",
+      "displayName": "Fuzz (Honggfuzz)",
       "inherits": "base",
-      "binaryDir": "${sourceDir}/build/hongfuzz",
-      "toolchainFile": "fuzz/cmake/hongfuzz.cmake"
+      "binaryDir": "${sourceDir}/build/honggfuzz",
+      "toolchainFile": "fuzz/cmake/honggfuzz.cmake"
     }
   ],
   "buildPresets": [
@@ -62,8 +62,8 @@
       }
     },
     {
-      "name": "fuzz-hongfuzz",
-      "configurePreset": "fuzz-hongfuzz"
+      "name": "fuzz-honggfuzz",
+      "configurePreset": "fuzz-honggfuzz"
     }
   ],
   "workflowPresets": [
@@ -107,15 +107,15 @@
       ]
     },
     {
-      "name": "fuzz-build-hongfuzz",
+      "name": "fuzz-build-honggfuzz",
       "steps": [
         {
           "type": "configure",
-          "name": "fuzz-hongfuzz"
+          "name": "fuzz-honggfuzz"
         },
         {
           "type": "build",
-          "name": "fuzz-hongfuzz"
+          "name": "fuzz-honggfuzz"
         }
       ]
     }

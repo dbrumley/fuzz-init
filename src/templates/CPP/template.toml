@@ -49,7 +49,7 @@ paths = [
     "fuzz/CMakeLists.txt",
     "fuzz/cmake",
     "fuzz/cmake/afl.cmake",
-    "fuzz/cmake/hongfuzz.cmake", 
+    "fuzz/cmake/honggfuzz.cmake",
     "fuzz/cmake/libfuzzer.cmake",
     "fuzz/cmake/standalone.cmake"
 ]
@@ -91,11 +91,11 @@ paths = ["TUTORIAL.md", "Dockerfile"]
 # Dictionary file - uses template for filename but not content
 [[files]]
 path = "fuzz/dictionaries/{{target_name}}.dict"
-template = true 
+template = true
 
 [[files]]
 condition = "integration == 'cmake'"
-paths = ["fuzz/cmake"] 
+paths = ["fuzz/cmake"]
 
 # ===== DIRECTORY CONFIGURATIONS =====
 
@@ -110,7 +110,7 @@ content = """
 🎯 {{project_name}} C++ Fuzzing Project Created!
 
 {{#if minimal}}
-   Your fuzzing harness is ready in the fuzz directory. 
+   Your fuzzing harness is ready in the fuzz directory.
 {{else}}
 📁 Full mode: Complete project with example library and fuzzing setup.
 {{/if}}
@@ -148,7 +148,7 @@ steps = [
 verify_files = [
     "build/libfuzzer/bin/fuzz_harness_1-libfuzzer",
     "build/afl/bin/fuzz_harness_1-afl",
-    "build/hongfuzz/bin/fuzz_harness_1-hongfuzz",
+    "build/honggfuzz/bin/fuzz_harness_1-honggfuzz",
     "build/standalone/bin/fuzz_harness_1-native"
 ]
 
@@ -163,7 +163,7 @@ steps = [
 verify_files = [
     "fuzz/build/fuzz_harness_1-libfuzzer",
     "fuzz/build/fuzz_harness_1-afl",
-    "fuzz/build/fuzz_harness_1-hongfuzz",
+    "fuzz/build/fuzz_harness_1-honggfuzz",
     "fuzz/build/fuzz_harness_1-standalone"
 ]
 
@@ -177,15 +177,15 @@ steps = [
     ["cmake", "--build", "--preset", "fuzz-libfuzzer"],
     ["cmake", "--preset", "fuzz-afl"],
     ["cmake", "--build", "--preset", "fuzz-afl"],
-    ["cmake", "--preset", "fuzz-hongfuzz"],
-    ["cmake", "--build", "--preset", "fuzz-hongfuzz"],
+    ["cmake", "--preset", "fuzz-honggfuzz"],
+    ["cmake", "--build", "--preset", "fuzz-honggfuzz"],
     ["cmake", "--preset", "fuzz-standalone"],
     ["cmake", "--build", "--preset", "fuzz-standalone"]
 ]
 verify_files = [
     "build/libfuzzer/bin/fuzz_harness_1-libfuzzer",
     "build/afl/bin/fuzz_harness_1-afl",
-    "build/hongfuzz/bin/fuzz_harness_1-hongfuzz",
+    "build/honggfuzz/bin/fuzz_harness_1-honggfuzz",
     "build/standalone/bin/fuzz_harness_1-native"
 ]
 
@@ -200,6 +200,6 @@ steps = [
 verify_files = [
     "build/fuzz_harness_1-libfuzzer",
     "build/fuzz_harness_1-afl",
-    "build/fuzz_harness_1-hongfuzz",
+    "build/fuzz_harness_1-honggfuzz",
     "build/fuzz_harness_1-standalone"
 ]
