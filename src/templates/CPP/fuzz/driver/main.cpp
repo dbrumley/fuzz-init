@@ -5,38 +5,36 @@
 //
 // It mirrors the common afl_driver semantics while keeping sanitizer calls optional.
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <string_view>
 #include <sys/stat.h>
 
 #if defined(_WIN32)
-  #include <io.h>
-  #define FUZZ_FILENO _fileno
-  #define FUZZ_DUP2   _dup2
-  #define FUZZ_OPEN   _open
-  #define FUZZ_O_CREAT _O_CREAT
-  #define FUZZ_O_TRUNC _O_TRUNC
-  #define FUZZ_O_WRONLY _O_WRONLY
-  #define FUZZ_S_IRUSR _S_IREAD
-  #define FUZZ_S_IWUSR _S_IWRITE
+
+#include <io.h>
+// makes windows low-level IO posix-compatible
+#define open _open
+#define read _read
+#define stat _stat
+#define close _close
+#define O_RDONLY _O_RDONLY
+#define S_IFMT _S_IFMT
+#define S_IFDIR _S_IFDIR
+#define S_IFREG _S_IFREG
 #else
-  #include <unistd.h>
-  #include <dirent.h>
-  #include <fcntl.h>
-  #define FUZZ_FILENO fileno
-  #define FUZZ_DUP2   dup2
-  #define FUZZ_OPEN   open
-  #define FUZZ_O_CREAT O_CREAT
-  #define FUZZ_O_TRUNC O_TRUNC
-  #define FUZZ_O_WRONLY O_WRONLY
-  #define FUZZ_S_IRUSR 0400
-  #define FUZZ_S_IWUSR 0200
+
+#include <unistd.h>
+#include <dirent.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 #endif
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size);
@@ -65,20 +63,14 @@ extern "C" void __sanitizer_set_death_callback(void (*)()) __attribute__((weak))
 #endif
 
 // -------------------- Utils --------------------
-static bool is_dir(const char* p) {
-#if defined(_WIN32)
-  struct _stat st; return _stat(p, &st) == 0 && (st.st_mode & _S_IFDIR);
-#else
-  struct stat st; return stat(p, &st) == 0 && S_ISDIR(st.st_mode);
-#endif
+static int is_dir(const char* p) {
+  struct stat st;
+  return stat(p, &st) == 0 && (st.st_mode & S_IFMT) == S_IFDIR;
 }
 
 static bool is_file(const char* p) {
-#if defined(_WIN32)
-  struct _stat st; return _stat(p, &st) == 0 && (st.st_mode & _S_IFREG);
-#else
-  struct stat st; return stat(p, &st) == 0 && S_ISREG(st.st_mode);
-#endif
+  struct stat st;
+  return stat(p, &st) == 0 && (st.st_mode & S_IFMT) == S_IFREG;
 }
 
 static void list_files_in_dir(const char* dir, std::vector<std::string>& out) {
@@ -101,22 +93,41 @@ static void list_files_in_dir(const char* dir, std::vector<std::string>& out) {
 #endif
 }
 
-static bool read_all_stream(FILE* f, std::vector<uint8_t>& buf, size_t max_len) {
-  unsigned char tmp[4096]; size_t n;
-  while ((n = std::fread(tmp, 1, sizeof(tmp), f)) > 0) {
-    if (buf.size() + n > max_len) n = max_len - buf.size();
-    buf.insert(buf.end(), tmp, tmp + n);
-    if (buf.size() >= max_len) break;
+static uint8_t *read_data(int fd, size_t *len, size_t max_len) {
+  uint8_t *ptr = NULL;
+  *len = 0;
+  while (*len <= max_len) {
+    uint8_t buf[BUFSIZ];
+    int n = read(fd, buf, sizeof(buf));
+    if (n == -1) {
+      std::perror("read");
+      std::exit(1);
+    }
+    if (n == 0) {
+      break;
+    }
+
+    n = std::min<int>(n, max_len - *len);
+    *len += n;
+    ptr = (uint8_t *)realloc(ptr, *len);
+    if (ptr == NULL) {
+      std::perror("realloc");
+      std::exit(1);
+    }
+    std::memcpy(ptr + *len - n, buf, n);
   }
-  return std::ferror(f) == 0;
+  return ptr;
 }
 
-static bool read_all_file(const char* path, std::vector<uint8_t>& buf, size_t max_len) {
-  FILE* f = std::fopen(path, "rb");
-  if (!f) return false;
-  bool ok = read_all_stream(f, buf, max_len);
-  std::fclose(f);
-  return ok;
+static uint8_t *read_file(const char* path, size_t *len, size_t max_len) {
+  int fd = open(path, O_RDONLY);
+  if (fd == -1) {
+    fprintf(stderr, "can't open file %s: %s\n", path, strerror(errno));
+    return NULL;
+  }
+  uint8_t *data = read_data(fd, len, max_len);
+  close(fd);
+  return data;
 }
 
 // Optional: ensure sanitizer reports get flushed
@@ -171,21 +182,26 @@ int main(int argc, char** argv) {
     else if (is_file(p.c_str())) files.push_back(p);
   }
 
+  size_t len;
   // No inputs? Read stdin once.
   if (files.empty()) {
-    std::vector<uint8_t> data;
-    if (read_all_stream(stdin, data, max_len)) {
-      LLVMFuzzerTestOneInput(data.data(), data.size());
-    }
+    uint8_t *data = read_data(0, &len, max_len);
+    LLVMFuzzerTestOneInput(data, len);
+    free(data);
     return 0;
   }
 
   int executed = 0;
   for (const auto& f : files) {
-    if (runs >= 0 && executed >= runs) break;
-    std::vector<uint8_t> data;
-    if (!read_all_file(f.c_str(), data, max_len)) continue;
-    LLVMFuzzerTestOneInput(data.data(), data.size());
+    if (runs >= 0 && executed >= runs) {
+      break;
+    }
+    uint8_t *data = read_file(f.c_str(), &len, max_len);
+    if (data == NULL) {
+      continue;
+    }
+    LLVMFuzzerTestOneInput(data, len);
+    free(data);
     ++executed;
   }
 
